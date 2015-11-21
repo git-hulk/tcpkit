@@ -28,5 +28,9 @@
 *.x86_64
 *.hex
 
+tags
+*.swp
+.DS_Store
+
 # Debug files
 *.dSYM/

@@ -36,8 +36,8 @@ endif
 endif
 	
 deps: nop 
-	# @cd ../deps/libpcap/  && ./configure && make && cd ../ && cd ./lua/src && make $(os_Platform) && cd ../../../
+	@cd ../deps/libpcap/  && ./configure && make && cd ../ && cd ./lua/src && make $(os_Platform) && cd ../../../
 
 clean:
-	- rm -rf $(PROG) && rm -rf  *.o #&& cd ../deps/libpcap/ && make clean
+	- rm -rf $(PROG) && rm -rf  *.o && cd ../deps/libpcap/ && make clean
 nop:
