@@ -18,6 +18,12 @@ get_lua_vm() {
     return L;
 }
 
+struct tk_options *
+get_global_options()
+{
+    return &opts;
+}
+
 int
 is_client_mode ()
 {
@@ -66,14 +72,6 @@ main(int argc, char **argv)
         usage(argv[0]);
         exit(0);
     }
-    if(!opts.port) {
-        logger(ERROR, "port is required.\n");
-        exit(0);
-    }
-
-    if(!opts.specified_addresses && get_addresses() != 0) {
-        exit(0);
-    }
 
     if(!opts.script) {
         opts.script = "example.lua";
@@ -90,6 +88,14 @@ main(int argc, char **argv)
         exit(0);
     }
 
+    if(!opts.specified_addresses && get_addresses() != 0) {
+        exit(0);
+    }
+
+    if(!opts.port) {
+        logger(ERROR, "port is required.\n");
+        exit(0);
+    }
     if (! opts.device) {
         logger(ERROR, "device is required.\n");
         exit(0);

@@ -19,5 +19,6 @@ struct tk_options {
 };
 
 lua_State *get_lua_vm(); 
+struct tk_options *get_global_options();
 int is_client_mode();
 #endif

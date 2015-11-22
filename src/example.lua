@@ -1,8 +1,11 @@
 local cjson = require "cjson"
+local example_config = {
+    server = "1.1.1.1",
+    port = 11211,
+    device = "eth0" 
+}
 
-local hash = {}
-
+set_config(example_config)
 function process_packet(ip)
-    local ipp = cjson.decode(ip)
     print(ip)
 end

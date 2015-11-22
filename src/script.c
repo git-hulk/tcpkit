@@ -1,4 +1,7 @@
-#include "script.h"
+#include "tcpkit.h"
+#include "local_addresses.h"
+#include <stdlib.h>
+#include <string.h>
 
 LUALIB_API int (luaopen_cjson) (lua_State *L); 
 
@@ -9,6 +12,45 @@ lua_loadlib(lua_State *L, const char *libname, lua_CFunction luafunc) {
     lua_call(L, 1, 0);
 }
 
+static int set_config(lua_State* L)
+{
+    struct tk_options *opts;
+    opts = get_global_options();
+
+    // discard any extra arguments passed in
+    lua_settop(L, 1);
+    // argument should be table
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    // stack state: | -1 => nil | index => table |
+    lua_pushnil(L);
+    while (lua_next(L, 1)) {
+        // stack state: | -1 => value | -2 => key | index => table |
+        lua_pushvalue(L, -2);
+        // stack state: | -1 => key | -2 => value | -3 => key| index => table |
+        const char *key = lua_tostring(L, -1);
+        const char *val = lua_tostring(L, -2);
+        if(!opts->server && strcmp(key, "server") == 0) {
+            opts->server = strdup(val);
+        } else if(!opts->port && strcmp(key, "port") == 0)  {
+            opts->port = atoi(val);
+        } else if(!opts->device && strcmp(key, "device") == 0)  {
+            opts->device = strdup(val);
+        } else if(!opts->device && strcmp(key, "log_file") == 0)  {
+            opts->log_file= strdup(val);
+        } else if(!opts->specified_addresses && strcmp(key, "local_address") == 0)  {
+            if(!parse_addresses((char *)val)) {
+                opts->specified_addresses = 1;
+            }
+        }
+
+        lua_pop(L, 2);
+        // stack state: | -1 => key | index => table |
+    }
+    // stack state: |index => table|
+    return 1;
+}
+
 lua_State *
 script_init(const char *filename)
 {
@@ -16,9 +58,9 @@ script_init(const char *filename)
 
     luaL_openlibs(L);
 
+    lua_register(L, "set_config", set_config);
     lua_loadlib(L, "cjson", luaopen_cjson);
-    luaL_loadfile(L, filename);
-    lua_pcall(L, 0,0,0);
+    luaL_dofile(L, filename);
 
     return L;
 }
