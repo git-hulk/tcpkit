@@ -8,19 +8,21 @@
 #include <string.h>
 #include <errno.h>
 
-struct tk_options {
-    char *server;
-    char *device;
-    char *script;
-    char *log_file;
-    int port;
-    int specified_addresses; 
-};
+struct tk_options opts;
 
 // global lua state
-lua_State *L; 
+static lua_State *L = NULL; 
 
-struct tk_options opts;
+lua_State *
+get_lua_vm() {
+    return L;
+}
+
+int
+is_client_mode ()
+{
+    return opts.server == NULL ? 0 : 1;
+}
 
 void
 usage(char *prog)
@@ -83,12 +85,10 @@ main(int argc, char **argv)
 
     L = script_init(opts.script);
     // check callback function is exist.
-    lua_getglobal(L, DEFAULT_CALLBACK);
-    if(! lua_isfunction(L,lua_gettop(L))) {
+    if(! script_check_func_exists(L, DEFAULT_CALLBACK)) {
         logger(ERROR, "function %s is required in lua script.\n", DEFAULT_CALLBACK);
         exit(0);
     }
-    lua_pop(L,-1);
 
     if (! opts.device) {
         logger(ERROR, "device is required.\n");

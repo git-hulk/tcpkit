@@ -1,6 +1,7 @@
 #include "packet.h"
 #include "tcpkit.h"
 #include "cJSON.h"
+#include "util.h"
 #include "local_addresses.h"
 #include <stdlib.h>
 #include <string.h>
@@ -49,15 +50,10 @@ process_packet(unsigned char *user, const struct pcap_pkthdr *header,
 
 char *ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
 {
-    int off, tcp_hdr_size, direct = 0;
-    char buf[64];
+    int tcp_hdr_size, direct = 0;
     struct tcphdr *tcp;
     uint16_t sport, dport;
-    char *json_str, *addr;
-
-    off = strftime(buf,sizeof(buf),"%Y-%m-%d %H:%M:%S.",localtime(&tv.tv_sec)); 
-    snprintf(buf+off,sizeof(buf)-off,"%03d",(int)tv.tv_usec/1000);
-
+    char *json_str;
 
     tcp = (struct tcphdr *) ((unsigned char *) ip + sizeof(struct ip));
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
@@ -76,15 +72,17 @@ char *ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
 
         cJSON *cjson = cJSON_CreateObject();
 
-        cJSON_AddStringToObject(cjson, "timestamp", buf);
-        addr = inet_ntoa(ip->ip_src);
-        cJSON_AddStringToObject(cjson, "src", addr);
-        addr = inet_ntoa(ip->ip_dst);
-        cJSON_AddStringToObject(cjson, "dst", addr);
+        // ms
+        cJSON_AddNumberToObject(cjson, "timestamp", tv.tv_sec * 1000 + tv.tv_usec/1000);
+        cJSON_AddNumberToObject(cjson, "direct" ,direct);
+        cJSON_AddNumberToObject(cjson, "len" , dlen);
+        //addr = inet_ntoa(ip->ip_src);
+        cJSON_AddLStringToObject(cjson, "src", inet_ntoa(ip->ip_src), 15);
+        //addr = inet_ntoa(ip->ip_dst);
+        cJSON_AddLStringToObject(cjson, "dst", inet_ntoa(ip->ip_dst), 15);
         cJSON_AddNumberToObject(cjson, "sport" ,sport);
         cJSON_AddNumberToObject(cjson, "dport" ,dport);
-        cJSON_AddNumberToObject(cjson, "len" , dlen);
-        cJSON_AddNumberToObject(cjson, "direct" ,direct);
+        cJSON_AddNumberToObject(cjson, "is_client" , is_client_mode());
         if (dlen > 0) {
             // -----------+-----------+----------+-----....-----+
             // | ETHER    |  IP       | TCP      | payload      |
@@ -116,8 +114,15 @@ process_ip_packet(const struct ip *ip, struct timeval tv) {
 #endif
         // ignore tcp flow packet
         if(datalen == 0) break;
+        
 
         // lua process handler
+        lua_State *L = get_lua_vm();
+        if (!L) {
+            logger(ERROR, "Lua vm isn't initialed.");
+            exit(1);
+        }
+
         lua_getglobal(L, DEFAULT_CALLBACK);
         json_str = ip_to_json(ip, datalen, tv);    
         lua_pushstring(L, json_str);

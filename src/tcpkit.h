@@ -8,6 +8,16 @@
 #include "util.h"
 
 #define DEFAULT_CALLBACK "process_packet"
-//extern pcap_wrapper *pw;
-extern  lua_State *L; 
+
+struct tk_options {
+    char *server;
+    char *device;
+    char *script;
+    char *log_file;
+    int port;
+    int specified_addresses; 
+};
+
+lua_State *get_lua_vm(); 
+int is_client_mode();
 #endif
