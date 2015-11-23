@@ -7,6 +7,7 @@
 #include "script.h"
 #include "util.h"
 
+#define VERSION "0.1.0"
 #define DEFAULT_CALLBACK "process_packet"
 
 struct tk_options {

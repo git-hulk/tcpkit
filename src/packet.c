@@ -6,11 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-lua_State *L;
-
 void
 process_packet(unsigned char *user, const struct pcap_pkthdr *header,
-                const unsigned char *packet) {
+                const unsigned char *packet)
+{
     const struct sll_header *sll;
     const struct ether_header *ether_header;
     const struct ip *ip;
@@ -48,7 +47,8 @@ process_packet(unsigned char *user, const struct pcap_pkthdr *header,
 }
 
 
-char *ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
+char *
+ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
 {
     int tcp_hdr_size, direct = 0;
     struct tcphdr *tcp;
@@ -97,7 +97,8 @@ char *ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
 }
 
 int
-process_ip_packet(const struct ip *ip, struct timeval tv) {
+process_ip_packet(const struct ip *ip, struct timeval tv)
+{
     switch (ip->ip_p) {
         struct tcphdr *tcp;
         unsigned len, datalen; 

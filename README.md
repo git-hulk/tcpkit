@@ -1,2 +1,3 @@
 # tcpkit
-A tool can analyze tcp packets with Lua
+A tool analyze tcp packets with Lua.
+

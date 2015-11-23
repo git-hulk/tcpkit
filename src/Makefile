@@ -3,6 +3,10 @@ CFLAGS = -g -Wall
 CINCLUDES = -I../deps/libpcap/ -I../deps/lua/src
 CLIBS = ../deps/libpcap/libpcap.a ../deps/lua/src/liblua.a
 
+INSTALL=/usr/bin/install
+INSTALLDIR=/usr/local
+BINDIR=$(INSTALLDIR)/bin
+
 OBJS = local_addresses.o util.o cJSON.o packet_capture.o packet.o script.o tcpkit.o
 PROG = tcpkit
 all: deps tcpkit
@@ -36,8 +40,15 @@ endif
 endif
 	
 deps: nop 
-	@cd ../deps/libpcap/  && ./configure && make && cd ../ && cd ./lua/src && make $(os_Platform) && cd ../../../
+	#@cd ../deps/libpcap/  && ./configure && make
+	#@cd ../deps/lua/src && make $(os_Platform)
 
 clean:
-	- rm -rf $(PROG) && rm -rf  *.o && cd ../deps/libpcap/ && make clean
+	- rm -rf $(PROG) && rm -rf  *.o 
+	#@cd ../deps/libpcap/ && make clean
+	#@cd ../deps/lua/src/ && make clean
 nop:
+
+install:
+	mkdir -p $(BINDIR)
+	$(INSTALL) $(PROG) $(BINDIR)

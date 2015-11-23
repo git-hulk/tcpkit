@@ -40,15 +40,16 @@ usage(char *prog)
     fprintf(stderr, "\t-S lua script path, detail in example.lua.\n");
     fprintf(stderr, "\t-l local address.\n");
     fprintf(stderr, "\t-f log file.\n");
+    fprintf(stderr, "\t-v version.\n");
     fprintf(stderr, "\t-h help.\n");
 }
 
 int
 main(int argc, char **argv)
 {
-    char ch, filter[128], is_usage = 0;
+    char ch, filter[128], is_usage = 0, show_version = 0;
 
-    while((ch = getopt(argc, argv, "s:p:i:S:l:h")) != -1) {
+    while((ch = getopt(argc, argv, "s:p:i:S:l:hv")) != -1) {
         switch(ch) {
             case 's': opts.server = strdup(optarg); break;                       
             case 'p': opts.port= atoi(optarg); break;                       
@@ -65,6 +66,7 @@ main(int argc, char **argv)
 
             case 'f': opts.log_file = strdup(optarg); break;                       
             case 'h': is_usage = 1; break;                       
+            case 'v': show_version= 1; break;                       
         }
     }
 
@@ -72,12 +74,16 @@ main(int argc, char **argv)
         usage(argv[0]);
         exit(0);
     }
+    if(show_version) {
+        printf("%s version is %s\n", argv[0], VERSION);
+        exit(0);
+    }
 
     if(!opts.script) {
         opts.script = "example.lua";
     }
     if(access(opts.script, R_OK) == -1) {
-        logger(ERROR, "load lua script failed, as %s\n", strerror(errno));
+        logger(ERROR, "load lua script %s failed, as %s\n", opts.script, strerror(errno));
         exit(0);
     }
 
