@@ -40,13 +40,13 @@ endif
 endif
 	
 deps: nop 
-	#@cd ../deps/libpcap/  && ./configure && make
-	#@cd ../deps/lua/src && make $(os_Platform)
+	@cd ../deps/libpcap/  && ./configure && make
+	@cd ../deps/lua/src && make $(os_Platform)
 
 clean:
 	- rm -rf $(PROG) && rm -rf  *.o 
-	#@cd ../deps/libpcap/ && make clean
-	#@cd ../deps/lua/src/ && make clean
+	@cd ../deps/libpcap/ && make clean
+	@cd ../deps/lua/src/ && make clean
 nop:
 
 install:
