@@ -20,7 +20,7 @@ function process_packet(ip)
         if ip_obj.is_client == 1 then
             key = ip_obj.src .. "-" .. ip_obj.sport .. "-" .. ip_obj.dst .. "-" .. ip_obj.dport
             if delay_hash[key] then
-                print("Client query data cost " .. (ip_obj.timestamp - delay_hash[key]) .. "ms")
+                print("Client query data cost " .. (ip_obj.timestamp - delay_hash[key]) .. "us")
             end
         else
             key = ip_obj.dst .. "-" .. ip_obj.dport .. "-" .. ip_obj.src .. "-" .. ip_obj.sport
@@ -35,7 +35,7 @@ function process_packet(ip)
         else
             key = ip_obj.src.. "-" .. ip_obj.sport .. "-" .. ip_obj.dst .. "-" .. ip_obj.dport
             if delay_hash[key] then
-                print("Server handle packet cost " .. (ip_obj.timestamp - delay_hash[key]) .. "ms")
+                print("Server handle packet cost " .. (ip_obj.timestamp - delay_hash[key]) .. "us")
             end
         end
     end

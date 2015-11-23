@@ -43,6 +43,8 @@ process_packet(unsigned char *user, const struct pcap_pkthdr *header,
      default: return; 
     }
     
+    // prevent warning
+    packet_type = 0;
     process_ip_packet(ip, header->ts); 
 }
 
@@ -73,7 +75,7 @@ ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
         cJSON *cjson = cJSON_CreateObject();
 
         // ms
-        cJSON_AddNumberToObject(cjson, "timestamp", tv.tv_sec * 1000 + tv.tv_usec/1000);
+        cJSON_AddNumberToObject(cjson, "timestamp", tv.tv_sec * 1000000 + tv.tv_usec);
         cJSON_AddNumberToObject(cjson, "direct" ,direct);
         cJSON_AddNumberToObject(cjson, "len" , dlen);
         //addr = inet_ntoa(ip->ip_src);
