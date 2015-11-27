@@ -31,6 +31,11 @@
  * SUCH DAMAGE.
  */
 
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/libpcap/pcap.c,v 1.128 2008-12-23 20:13:29 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -52,7 +57,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if !defined(_MSC_VER) && !defined(__BORLANDC__) && !defined(__MINGW32__)
+#if !defined(_MSC_VER) && !defined(__BORLANDC__)
 #include <unistd.h>
 #endif
 #include <fcntl.h>
@@ -69,59 +74,16 @@
 #include "pcap-int.h"
 
 #ifdef HAVE_DAG_API
-#include "pcap-dag.h"
-#endif /* HAVE_DAG_API */
-
-#ifdef HAVE_SEPTEL_API
-#include "pcap-septel.h"
-#endif /* HAVE_SEPTEL_API */
-
-#ifdef HAVE_SNF_API
-#include "pcap-snf.h"
-#endif /* HAVE_SNF_API */
-
-#ifdef PCAP_SUPPORT_USB
-#include "pcap-usb-linux.h"
+#include <dagnew.h>
+#include <dagapi.h>
 #endif
 
-#ifdef PCAP_SUPPORT_BT
-#include "pcap-bt-linux.h"
-#endif
-
-#ifdef PCAP_SUPPORT_BT_MONITOR
-#include "pcap-bt-monitor-linux.h"
-#endif
-
-#ifdef PCAP_SUPPORT_CAN
-#include "pcap-can-linux.h"
-#endif
-
-#ifdef PCAP_SUPPORT_CANUSB
-#include "pcap-canusb-linux.h"
-#endif
-
-#ifdef PCAP_SUPPORT_NETFILTER
-#include "pcap-netfilter-linux.h"
-#endif
-
-#ifdef PCAP_SUPPORT_DBUS
-#include "pcap-dbus.h"
-#endif
-
-int
-pcap_not_initialized(pcap_t *pcap _U_)
+int 
+pcap_not_initialized(pcap_t *pcap)
 {
 	/* this means 'not initialized' */
-	return (PCAP_ERROR_NOT_ACTIVATED);
+	return PCAP_ERROR_NOT_ACTIVATED;
 }
-
-#ifdef WIN32
-Adapter *
-pcap_no_adapter(pcap_t *pcap _U_)
-{
-	return (NULL);
-}
-#endif
 
 /*
  * Returns 1 if rfmon mode can be set on the pcap_t, 0 if it can't,
@@ -143,61 +105,11 @@ pcap_cant_set_rfmon(pcap_t *p _U_)
 }
 
 /*
- * Sets *tstamp_typesp to point to an array 1 or more supported time stamp
- * types; the return value is the number of supported time stamp types.
- * The list should be freed by a call to pcap_free_tstamp_types() when
- * you're done with it.
- *
- * A return value of 0 means "you don't get a choice of time stamp type",
- * in which case *tstamp_typesp is set to null.
- *
- * PCAP_ERROR is returned on error.
- */
-int
-pcap_list_tstamp_types(pcap_t *p, int **tstamp_typesp)
-{
-	if (p->tstamp_type_count == 0) {
-		/*
-		 * We don't support multiple time stamp types.
-		 */
-		*tstamp_typesp = NULL;
-	} else {
-		*tstamp_typesp = (int*)calloc(sizeof(**tstamp_typesp),
-		    p->tstamp_type_count);
-		if (*tstamp_typesp == NULL) {
-			(void)snprintf(p->errbuf, sizeof(p->errbuf),
-			    "malloc: %s", pcap_strerror(errno));
-			return (PCAP_ERROR);
-		}
-		(void)memcpy(*tstamp_typesp, p->tstamp_type_list,
-		    sizeof(**tstamp_typesp) * p->tstamp_type_count);
-	}
-	return (p->tstamp_type_count);
-}
-
-/*
- * In Windows, you might have a library built with one version of the
- * C runtime library and an application built with another version of
- * the C runtime library, which means that the library might use one
- * version of malloc() and free() and the application might use another
- * version of malloc() and free().  If so, that means something
- * allocated by the library cannot be freed by the application, so we
- * need to have a pcap_free_tstamp_types() routine to free up the list
- * allocated by pcap_list_tstamp_types(), even though it's just a wrapper
- * around free().
- */
-void
-pcap_free_tstamp_types(int *tstamp_type_list)
-{
-	free(tstamp_type_list);
-}
-
-/*
  * Default one-shot callback; overridden for capture types where the
  * packet data cannot be guaranteed to be available after the callback
  * returns, so that a copy must be made.
  */
-void
+static void
 pcap_oneshot(u_char *user, const struct pcap_pkthdr *h, const u_char *pkt)
 {
 	struct oneshot_userdata *sp = (struct oneshot_userdata *)user;
@@ -220,7 +132,7 @@ pcap_next(pcap_t *p, struct pcap_pkthdr *h)
 	return (pkt);
 }
 
-int
+int 
 pcap_next_ex(pcap_t *p, struct pcap_pkthdr **pkt_header,
     const u_char **pkt_data)
 {
@@ -233,12 +145,11 @@ pcap_next_ex(pcap_t *p, struct pcap_pkthdr **pkt_header,
 	/* Saves a pointer to the packet headers */
 	*pkt_header= &p->pcap_header;
 
-	if (p->rfile != NULL) {
+	if (p->sf.rfile != NULL) {
 		int status;
 
 		/* We are on an offline capture */
-		status = pcap_offline_read(p, 1, p->oneshot_callback,
-		    (u_char *)&s);
+		status = pcap_offline_read(p, 1, pcap_oneshot, (u_char *)&s);
 
 		/*
 		 * Return codes for pcap_offline_read() are:
@@ -267,185 +178,8 @@ pcap_next_ex(pcap_t *p, struct pcap_pkthdr **pkt_header,
 	 * The first one ('0') conflicts with the return code of 0 from
 	 * pcap_offline_read() meaning "end of file".
 	*/
-	return (p->read_op(p, 1, p->oneshot_callback, (u_char *)&s));
+	return (p->read_op(p, 1, pcap_oneshot, (u_char *)&s));
 }
-
-#if defined(DAG_ONLY)
-int
-pcap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
-{
-	return (dag_findalldevs(alldevsp, errbuf));
-}
-
-pcap_t *
-pcap_create(const char *source, char *errbuf)
-{
-	int is_ours;
-	return (dag_create(source, errbuf, &is_ours));
-}
-#elif defined(SEPTEL_ONLY)
-int
-pcap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
-{
-	return (septel_findalldevs(alldevsp, errbuf));
-}
-
-pcap_t *
-pcap_create(const char *source, char *errbuf)
-{
-	int is_ours;
-	return (septel_create(source, errbuf, &is_ours));
-}
-#elif defined(SNF_ONLY)
-int
-pcap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
-{
-	return (snf_findalldevs(alldevsp, errbuf));
-}
-
-pcap_t *
-pcap_create(const char *source, char *errbuf)
-{
-	int is_ours;
-	return (snf_create(source, errbuf, &is_ours));
-}
-#else /* regular pcap */
-struct capture_source_type {
-	int (*findalldevs_op)(pcap_if_t **, char *);
-	pcap_t *(*create_op)(const char *, char *, int *);
-} capture_source_types[] = {
-#ifdef HAVE_DAG_API
-	{ dag_findalldevs, dag_create },
-#endif
-#ifdef HAVE_SEPTEL_API
-	{ septel_findalldevs, septel_create },
-#endif
-#ifdef HAVE_SNF_API
-	{ snf_findalldevs, snf_create },
-#endif
-#ifdef PCAP_SUPPORT_BT
-	{ bt_findalldevs, bt_create },
-#endif
-#ifdef PCAP_SUPPORT_BT_MONITOR
-	{ bt_monitor_findalldevs, bt_monitor_create },
-#endif
-#if PCAP_SUPPORT_CANUSB
-	{ canusb_findalldevs, canusb_create },
-#endif
-#ifdef PCAP_SUPPORT_CAN
-	{ can_findalldevs, can_create },
-#endif
-#ifdef PCAP_SUPPORT_USB
-	{ usb_findalldevs, usb_create },
-#endif
-#ifdef PCAP_SUPPORT_NETFILTER
-	{ netfilter_findalldevs, netfilter_create },
-#endif
-#ifdef PCAP_SUPPORT_DBUS
-	{ dbus_findalldevs, dbus_create },
-#endif
-	{ NULL, NULL }
-};
-
-/*
- * Get a list of all capture sources that are up and that we can open.
- * Returns -1 on error, 0 otherwise.
- * The list, as returned through "alldevsp", may be null if no interfaces
- * were up and could be opened.
- */
-int
-pcap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
-{
-	size_t i;
-
-	/*
-	 * Get the list of regular interfaces first.
-	 */
-	if (pcap_findalldevs_interfaces(alldevsp, errbuf) == -1)
-		return (-1);	/* failure */
-
-	/*
-	 * Add any interfaces that need a platform-specific mechanism
-	 * to find.
-	 */
-	if (pcap_platform_finddevs(alldevsp, errbuf) == -1) {
-		/*
-		 * We had an error; free the list we've been
-		 * constructing.
-		 */
-		if (*alldevsp != NULL) {
-			pcap_freealldevs(*alldevsp);
-			*alldevsp = NULL;
-		}
-		return (-1);
-	}
-
-	/*
-	 * Ask each of the non-local-network-interface capture
-	 * source types what interfaces they have.
-	 */
-	for (i = 0; capture_source_types[i].findalldevs_op != NULL; i++) {
-		if (capture_source_types[i].findalldevs_op(alldevsp, errbuf) == -1) {
-			/*
-			 * We had an error; free the list we've been
-			 * constructing.
-			 */
-			if (*alldevsp != NULL) {
-				pcap_freealldevs(*alldevsp);
-				*alldevsp = NULL;
-			}
-			return (-1);
-		}
-	}
-
-	return (0);
-}
-
-pcap_t *
-pcap_create(const char *source, char *errbuf)
-{
-	size_t i;
-	int is_theirs;
-	pcap_t *p;
-
-	/*
-	 * A null source name is equivalent to the "any" device -
-	 * which might not be supported on this platform, but
-	 * this means that you'll get a "not supported" error
-	 * rather than, say, a crash when we try to dereference
-	 * the null pointer.
-	 */
-	if (source == NULL)
-		source = "any";
-
-	/*
-	 * Try each of the non-local-network-interface capture
-	 * source types until we find one that works for this
-	 * device or run out of types.
-	 */
-	for (i = 0; capture_source_types[i].create_op != NULL; i++) {
-		is_theirs = 0;
-		p = capture_source_types[i].create_op(source, errbuf, &is_theirs);
-		if (is_theirs) {
-			/*
-			 * The device name refers to a device of the
-			 * type in question; either it succeeded,
-			 * in which case p refers to a pcap_t to
-			 * later activate for the device, or it
-			 * failed, in which case p is null and we
-			 * should return that to report the failure
-			 * to create.
-			 */
-			return (p);
-		}
-	}
-
-	/*
-	 * OK, try it as a regular network interface.
-	 */
-	return (pcap_create_interface(source, errbuf));
-}
-#endif
 
 static void
 initialize_ops(pcap_t *p)
@@ -467,7 +201,6 @@ initialize_ops(pcap_t *p)
 	p->setbuff_op = (setbuff_op_t)pcap_not_initialized;
 	p->setmode_op = (setmode_op_t)pcap_not_initialized;
 	p->setmintocopy_op = (setmintocopy_op_t)pcap_not_initialized;
-	p->getadapter_op = pcap_no_adapter;
 #endif
 
 	/*
@@ -478,64 +211,29 @@ initialize_ops(pcap_t *p)
 	p->cleanup_op = pcap_cleanup_live_common;
 
 	/*
-	 * In most cases, the standard one-shot callback can
+	 * In most cases, the standard one-short callback can
 	 * be used for pcap_next()/pcap_next_ex().
 	 */
 	p->oneshot_callback = pcap_oneshot;
 }
 
-static pcap_t *
-pcap_alloc_pcap_t(char *ebuf, size_t size)
+pcap_t *
+pcap_create_common(const char *source, char *ebuf)
 {
-	char *chunk;
 	pcap_t *p;
 
-	/*
-	 * Allocate a chunk of memory big enough for a pcap_t
-	 * plus a structure following it of size "size".  The
-	 * structure following it is a private data structure
-	 * for the routines that handle this pcap_t.
-	 */
-	chunk = malloc(sizeof (pcap_t) + size);
-	if (chunk == NULL) {
+	p = malloc(sizeof(*p));
+	if (p == NULL) {
 		snprintf(ebuf, PCAP_ERRBUF_SIZE, "malloc: %s",
 		    pcap_strerror(errno));
 		return (NULL);
 	}
-	memset(chunk, 0, sizeof (pcap_t) + size);
-
-	/*
-	 * Get a pointer to the pcap_t at the beginning.
-	 */
-	p = (pcap_t *)chunk;
-
+	memset(p, 0, sizeof(*p));
 #ifndef WIN32
 	p->fd = -1;	/* not opened yet */
 	p->selectable_fd = -1;
-#endif
-
-	if (size == 0) {
-		/* No private data was requested. */
-		p->priv = NULL;
-	} else {
-		/*
-		 * Set the pointer to the private data; that's the structure
-		 * of size "size" following the pcap_t.
-		 */
-		p->priv = (void *)(chunk + sizeof (pcap_t));
-	}
-
-	return (p);
-}
-
-pcap_t *
-pcap_create_common(const char *source, char *ebuf, size_t size)
-{
-	pcap_t *p;
-
-	p = pcap_alloc_pcap_t(ebuf, size);
-	if (p == NULL)
-		return (NULL);
+	p->send_fd = -1;
+#endif 
 
 	p->opt.source = strdup(source);
 	if (p->opt.source == NULL) {
@@ -556,20 +254,10 @@ pcap_create_common(const char *source, char *ebuf, size_t size)
 	initialize_ops(p);
 
 	/* put in some defaults*/
- 	pcap_set_snaplen(p, MAXIMUM_SNAPLEN);	/* max packet size */
-	p->opt.timeout = 0;			/* no timeout specified */
-	p->opt.buffer_size = 0;			/* use the platform's default */
+	pcap_set_timeout(p, 0);
+	pcap_set_snaplen(p, 65535);	/* max packet size */
 	p->opt.promisc = 0;
-	p->opt.rfmon = 0;
-	p->opt.immediate = 0;
-	p->opt.tstamp_type = -1;	/* default to not setting time stamp type */
-	p->opt.tstamp_precision = PCAP_TSTAMP_PRECISION_MICRO;
-
-	/*
-	 * Start out with no BPF code generation flags set.
-	 */
-	p->bpf_codegen_flags = 0;
-
+	p->opt.buffer_size = 0;
 	return (p);
 }
 
@@ -579,149 +267,54 @@ pcap_check_activated(pcap_t *p)
 	if (p->activated) {
 		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "can't perform "
 			" operation on activated capture");
-		return (-1);
+		return -1;
 	}
-	return (0);
+	return 0;
 }
 
 int
 pcap_set_snaplen(pcap_t *p, int snaplen)
 {
 	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
+		return PCAP_ERROR_ACTIVATED;
 	p->snapshot = snaplen;
-	return (0);
+	return 0;
 }
 
 int
 pcap_set_promisc(pcap_t *p, int promisc)
 {
 	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
+		return PCAP_ERROR_ACTIVATED;
 	p->opt.promisc = promisc;
-	return (0);
+	return 0;
 }
 
 int
 pcap_set_rfmon(pcap_t *p, int rfmon)
 {
 	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
+		return PCAP_ERROR_ACTIVATED;
 	p->opt.rfmon = rfmon;
-	return (0);
+	return 0;
 }
 
 int
 pcap_set_timeout(pcap_t *p, int timeout_ms)
 {
 	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
-	p->opt.timeout = timeout_ms;
-	return (0);
-}
-
-int
-pcap_set_tstamp_type(pcap_t *p, int tstamp_type)
-{
-	int i;
-
-	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
-
-	/*
-	 * If p->tstamp_type_count is 0, we only support PCAP_TSTAMP_HOST;
-	 * the default time stamp type is PCAP_TSTAMP_HOST.
-	 */
-	if (p->tstamp_type_count == 0) {
-		if (tstamp_type == PCAP_TSTAMP_HOST) {
-			p->opt.tstamp_type = tstamp_type;
-			return (0);
-		}
-	} else {
-		/*
-		 * Check whether we claim to support this type of time stamp.
-		 */
-		for (i = 0; i < p->tstamp_type_count; i++) {
-			if (p->tstamp_type_list[i] == tstamp_type) {
-				/*
-				 * Yes.
-				 */
-				p->opt.tstamp_type = tstamp_type;
-				return (0);
-			}
-		}
-	}
-
-	/*
-	 * We don't support this type of time stamp.
-	 */
-	return (PCAP_WARNING_TSTAMP_TYPE_NOTSUP);
-}
-
-int
-pcap_set_immediate_mode(pcap_t *p, int immediate)
-{
-	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
-	p->opt.immediate = immediate;
-	return (0);
+		return PCAP_ERROR_ACTIVATED;
+	p->md.timeout = timeout_ms;
+	return 0;
 }
 
 int
 pcap_set_buffer_size(pcap_t *p, int buffer_size)
 {
 	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
+		return PCAP_ERROR_ACTIVATED;
 	p->opt.buffer_size = buffer_size;
-	return (0);
-}
-
-int
-pcap_set_tstamp_precision(pcap_t *p, int tstamp_precision)
-{
-	int i;
-
-	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
-
-	/*
-	 * If p->tstamp_precision_count is 0, we only support setting
-	 * the time stamp precision to microsecond precision; every
-	 * pcap module *MUST* support microsecond precision, even if
-	 * it does so by converting the native precision to
-	 * microseconds.
-	 */
-	if (p->tstamp_precision_count == 0) {
-		if (tstamp_precision == PCAP_TSTAMP_PRECISION_MICRO) {
-			p->opt.tstamp_precision = tstamp_precision;
-			return (0);
-		}
-	} else {
-		/*
-		 * Check whether we claim to support this precision of
-		 * time stamp.
-		 */
-		for (i = 0; i < p->tstamp_precision_count; i++) {
-			if (p->tstamp_precision_list[i] == tstamp_precision) {
-				/*
-				 * Yes.
-				 */
-				p->opt.tstamp_precision = tstamp_precision;
-				return (0);
-			}
-		}
-	}
-
-	/*
-	 * We don't support this time stamp precision.
-	 */
-	return (PCAP_ERROR_TSTAMP_PRECISION_NOTSUP);
-}
-
-int
-pcap_get_tstamp_precision(pcap_t *p)
-{
-        return (p->opt.tstamp_precision);
+	return 0;
 }
 
 int
@@ -729,15 +322,6 @@ pcap_activate(pcap_t *p)
 {
 	int status;
 
-	/*
-	 * Catch attempts to re-activate an already-activated
-	 * pcap_t; this should, for example, catch code that
-	 * calls pcap_open_live() followed by pcap_activate(),
-	 * as some code that showed up in a Stack Exchange
-	 * question did.
-	 */
-	if (pcap_check_activated(p))
-		return (PCAP_ERROR_ACTIVATED);
 	status = p->activate_op(p);
 	if (status >= 0)
 		p->activated = 1;
@@ -800,8 +384,7 @@ fail:
 		snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s", source,
 		    p->errbuf);
 	else if (status == PCAP_ERROR_NO_SUCH_DEVICE ||
-	    status == PCAP_ERROR_PERM_DENIED ||
-	    status == PCAP_ERROR_PROMISC_PERM_DENIED)
+	    status == PCAP_ERROR_PERM_DENIED)
 		snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s (%s)", source,
 		    pcap_statustostr(status), p->errbuf);
 	else
@@ -811,31 +394,10 @@ fail:
 	return (NULL);
 }
 
-pcap_t *
-pcap_open_offline_common(char *ebuf, size_t size)
-{
-	pcap_t *p;
-
-	p = pcap_alloc_pcap_t(ebuf, size);
-	if (p == NULL)
-		return (NULL);
-
-	p->opt.tstamp_precision = PCAP_TSTAMP_PRECISION_MICRO;
-	p->opt.source = strdup("(savefile)");
-	if (p->opt.source == NULL) {
-		snprintf(ebuf, PCAP_ERRBUF_SIZE, "malloc: %s",
-		    pcap_strerror(errno));
-		free(p);
-		return (NULL);
-	}
-
-	return (p);
-}
-
 int
 pcap_dispatch(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 {
-	return (p->read_op(p, cnt, callback, user));
+	return p->read_op(p, cnt, callback, user);
 }
 
 /*
@@ -845,7 +407,7 @@ int
 pcap_read(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 {
 
-	return (p->read_op(p, cnt, callback, user));
+	return p->read_op(p, cnt, callback, user);
 }
 
 int
@@ -854,7 +416,7 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 	register int n;
 
 	for (;;) {
-		if (p->rfile != NULL) {
+		if (p->sf.rfile != NULL) {
 			/*
 			 * 0 means EOF, so don't loop if we get 0.
 			 */
@@ -870,7 +432,7 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 		}
 		if (n <= 0)
 			return (n);
-		if (!PACKET_COUNT_IS_UNLIMITED(cnt)) {
+		if (cnt > 0) {
 			cnt -= n;
 			if (cnt <= 0)
 				return (0);
@@ -890,24 +452,18 @@ pcap_breakloop(pcap_t *p)
 int
 pcap_datalink(pcap_t *p)
 {
-	if (!p->activated)
-		return (PCAP_ERROR_NOT_ACTIVATED);
 	return (p->linktype);
 }
 
 int
 pcap_datalink_ext(pcap_t *p)
 {
-	if (!p->activated)
-		return (PCAP_ERROR_NOT_ACTIVATED);
 	return (p->linktype_ext);
 }
 
 int
 pcap_list_datalinks(pcap_t *p, int **dlt_buffer)
 {
-	if (!p->activated)
-		return (PCAP_ERROR_NOT_ACTIVATED);
 	if (p->dlt_count == 0) {
 		/*
 		 * We couldn't fetch the list of DLTs, which means
@@ -919,7 +475,7 @@ pcap_list_datalinks(pcap_t *p, int **dlt_buffer)
 		if (*dlt_buffer == NULL) {
 			(void)snprintf(p->errbuf, sizeof(p->errbuf),
 			    "malloc: %s", pcap_strerror(errno));
-			return (PCAP_ERROR);
+			return (-1);
 		}
 		**dlt_buffer = p->linktype;
 		return (1);
@@ -928,7 +484,7 @@ pcap_list_datalinks(pcap_t *p, int **dlt_buffer)
 		if (*dlt_buffer == NULL) {
 			(void)snprintf(p->errbuf, sizeof(p->errbuf),
 			    "malloc: %s", pcap_strerror(errno));
-			return (PCAP_ERROR);
+			return (-1);
 		}
 		(void)memcpy(*dlt_buffer, p->dlt_list,
 		    sizeof(**dlt_buffer) * p->dlt_count);
@@ -1015,6 +571,111 @@ unsupported:
 	return (-1);
 }
 
+struct dlt_choice {
+	const char *name;
+	const char *description;
+	int	dlt;
+};
+
+#define DLT_CHOICE(code, description) { #code, description, code }
+#define DLT_CHOICE_SENTINEL { NULL, NULL, 0 }
+
+static struct dlt_choice dlt_choices[] = {
+	DLT_CHOICE(DLT_NULL, "BSD loopback"),
+	DLT_CHOICE(DLT_EN10MB, "Ethernet"),
+	DLT_CHOICE(DLT_IEEE802, "Token ring"),
+	DLT_CHOICE(DLT_ARCNET, "BSD ARCNET"),
+	DLT_CHOICE(DLT_SLIP, "SLIP"),
+	DLT_CHOICE(DLT_PPP, "PPP"),
+	DLT_CHOICE(DLT_FDDI, "FDDI"),
+	DLT_CHOICE(DLT_ATM_RFC1483, "RFC 1483 LLC-encapsulated ATM"),
+	DLT_CHOICE(DLT_RAW, "Raw IP"),
+	DLT_CHOICE(DLT_SLIP_BSDOS, "BSD/OS SLIP"),
+	DLT_CHOICE(DLT_PPP_BSDOS, "BSD/OS PPP"),
+	DLT_CHOICE(DLT_ATM_CLIP, "Linux Classical IP-over-ATM"),
+	DLT_CHOICE(DLT_PPP_SERIAL, "PPP over serial"),
+	DLT_CHOICE(DLT_PPP_ETHER, "PPPoE"),
+        DLT_CHOICE(DLT_SYMANTEC_FIREWALL, "Symantec Firewall"),
+	DLT_CHOICE(DLT_C_HDLC, "Cisco HDLC"),
+	DLT_CHOICE(DLT_IEEE802_11, "802.11"),
+	DLT_CHOICE(DLT_FRELAY, "Frame Relay"),
+	DLT_CHOICE(DLT_LOOP, "OpenBSD loopback"),
+	DLT_CHOICE(DLT_ENC, "OpenBSD encapsulated IP"),
+	DLT_CHOICE(DLT_LINUX_SLL, "Linux cooked"),
+	DLT_CHOICE(DLT_LTALK, "Localtalk"),
+	DLT_CHOICE(DLT_PFLOG, "OpenBSD pflog file"),
+	DLT_CHOICE(DLT_PRISM_HEADER, "802.11 plus Prism header"),
+	DLT_CHOICE(DLT_IP_OVER_FC, "RFC 2625 IP-over-Fibre Channel"),
+	DLT_CHOICE(DLT_SUNATM, "Sun raw ATM"),
+	DLT_CHOICE(DLT_IEEE802_11_RADIO, "802.11 plus radiotap header"),
+	DLT_CHOICE(DLT_ARCNET_LINUX, "Linux ARCNET"),
+        DLT_CHOICE(DLT_JUNIPER_MLPPP, "Juniper Multi-Link PPP"),
+	DLT_CHOICE(DLT_JUNIPER_MLFR, "Juniper Multi-Link Frame Relay"),
+        DLT_CHOICE(DLT_JUNIPER_ES, "Juniper Encryption Services PIC"),
+        DLT_CHOICE(DLT_JUNIPER_GGSN, "Juniper GGSN PIC"),
+	DLT_CHOICE(DLT_JUNIPER_MFR, "Juniper FRF.16 Frame Relay"),
+        DLT_CHOICE(DLT_JUNIPER_ATM2, "Juniper ATM2 PIC"),
+        DLT_CHOICE(DLT_JUNIPER_SERVICES, "Juniper Advanced Services PIC"),
+        DLT_CHOICE(DLT_JUNIPER_ATM1, "Juniper ATM1 PIC"),
+	DLT_CHOICE(DLT_APPLE_IP_OVER_IEEE1394, "Apple IP-over-IEEE 1394"),
+	DLT_CHOICE(DLT_MTP2_WITH_PHDR, "SS7 MTP2 with Pseudo-header"),
+	DLT_CHOICE(DLT_MTP2, "SS7 MTP2"),
+	DLT_CHOICE(DLT_MTP3, "SS7 MTP3"),
+	DLT_CHOICE(DLT_SCCP, "SS7 SCCP"),
+	DLT_CHOICE(DLT_DOCSIS, "DOCSIS"),
+	DLT_CHOICE(DLT_LINUX_IRDA, "Linux IrDA"),
+	DLT_CHOICE(DLT_IEEE802_11_RADIO_AVS, "802.11 plus AVS radio information header"),
+        DLT_CHOICE(DLT_JUNIPER_MONITOR, "Juniper Passive Monitor PIC"),
+	DLT_CHOICE(DLT_PPP_PPPD, "PPP for pppd, with direction flag"),
+	DLT_CHOICE(DLT_JUNIPER_PPPOE, "Juniper PPPoE"),
+	DLT_CHOICE(DLT_JUNIPER_PPPOE_ATM, "Juniper PPPoE/ATM"),
+	DLT_CHOICE(DLT_GPRS_LLC, "GPRS LLC"),
+	DLT_CHOICE(DLT_GPF_T, "GPF-T"),
+	DLT_CHOICE(DLT_GPF_F, "GPF-F"),
+	DLT_CHOICE(DLT_JUNIPER_PIC_PEER, "Juniper PIC Peer"),
+	DLT_CHOICE(DLT_ERF_ETH,	"Ethernet with Endace ERF header"),
+	DLT_CHOICE(DLT_ERF_POS, "Packet-over-SONET with Endace ERF header"),
+	DLT_CHOICE(DLT_LINUX_LAPD, "Linux vISDN LAPD"),
+	DLT_CHOICE(DLT_JUNIPER_ETHER, "Juniper Ethernet"),
+	DLT_CHOICE(DLT_JUNIPER_PPP, "Juniper PPP"),
+	DLT_CHOICE(DLT_JUNIPER_FRELAY, "Juniper Frame Relay"),
+	DLT_CHOICE(DLT_JUNIPER_CHDLC, "Juniper C-HDLC"),
+	DLT_CHOICE(DLT_MFR, "FRF.16 Frame Relay"),
+	DLT_CHOICE(DLT_JUNIPER_VP, "Juniper Voice PIC"),
+	DLT_CHOICE(DLT_A429, "Arinc 429"),
+	DLT_CHOICE(DLT_A653_ICM, "Arinc 653 Interpartition Communication"),
+	DLT_CHOICE(DLT_USB, "USB"),
+	DLT_CHOICE(DLT_BLUETOOTH_HCI_H4, "Bluetooth HCI UART transport layer"),
+	DLT_CHOICE(DLT_IEEE802_16_MAC_CPS, "IEEE 802.16 MAC Common Part Sublayer"),
+	DLT_CHOICE(DLT_USB_LINUX, "USB with Linux header"),
+	DLT_CHOICE(DLT_CAN20B, "Controller Area Network (CAN) v. 2.0B"),
+	DLT_CHOICE(DLT_IEEE802_15_4_LINUX, "IEEE 802.15.4 with Linux padding"),
+	DLT_CHOICE(DLT_PPI, "Per-Packet Information"),
+	DLT_CHOICE(DLT_IEEE802_16_MAC_CPS_RADIO, "IEEE 802.16 MAC Common Part Sublayer plus radiotap header"),
+	DLT_CHOICE(DLT_JUNIPER_ISM, "Juniper Integrated Service Module"),
+	DLT_CHOICE(DLT_IEEE802_15_4, "IEEE 802.15.4"),
+	DLT_CHOICE(DLT_SITA, "SITA pseudo-header"),
+	DLT_CHOICE(DLT_ERF, "Endace ERF header"),
+	DLT_CHOICE(DLT_RAIF1, "Ethernet with u10 Networks pseudo-header"),
+	DLT_CHOICE(DLT_IPMB, "IPMB"),
+	DLT_CHOICE(DLT_JUNIPER_ST, "Juniper Secure Tunnel"),
+	DLT_CHOICE(DLT_BLUETOOTH_HCI_H4_WITH_PHDR, "Bluetooth HCI UART transport layer plus pseudo-header"),
+	DLT_CHOICE(DLT_AX25_KISS, "AX.25 with KISS header"),
+	DLT_CHOICE(DLT_IEEE802_15_4_NONASK_PHY, "IEEE 802.15.4 with non-ASK PHY data"),
+	DLT_CHOICE(DLT_MPLS, "MPLS with label as link-layer header"),
+	DLT_CHOICE(DLT_USB_LINUX_MMAPPED, "USB with padded Linux header"),
+	DLT_CHOICE(DLT_DECT, "DECT"),
+	DLT_CHOICE(DLT_AOS, "AOS Space Data Link protocol"),
+	DLT_CHOICE(DLT_WIHART, "Wireless HART"),
+	DLT_CHOICE(DLT_FC_2, "Fibre Channel FC-2"),
+	DLT_CHOICE(DLT_FC_2_WITH_FRAME_DELIMS, "Fibre Channel FC-2 with frame delimiters"),
+	DLT_CHOICE(DLT_IPNET, "Solaris ipnet"),
+	DLT_CHOICE(DLT_CAN_SOCKETCAN, "CAN-bus with SocketCAN headers"),
+	DLT_CHOICE(DLT_IPV4, "Raw IPv4"),
+	DLT_CHOICE(DLT_IPV6, "Raw IPv6"),
+	DLT_CHOICE_SENTINEL
+};
+
 /*
  * This array is designed for mapping upper and lower case letter
  * together for a case independent comparison.  The mappings are
@@ -1100,142 +761,6 @@ pcap_strcasecmp(const char *s1, const char *s2)
 	return (cm[*us1] - cm[*--us2]);
 }
 
-struct dlt_choice {
-	const char *name;
-	const char *description;
-	int	dlt;
-};
-
-#define DLT_CHOICE(code, description) { #code, description, code }
-#define DLT_CHOICE_SENTINEL { NULL, NULL, 0 }
-
-static struct dlt_choice dlt_choices[] = {
-	DLT_CHOICE(DLT_NULL, "BSD loopback"),
-	DLT_CHOICE(DLT_EN10MB, "Ethernet"),
-	DLT_CHOICE(DLT_IEEE802, "Token ring"),
-	DLT_CHOICE(DLT_ARCNET, "BSD ARCNET"),
-	DLT_CHOICE(DLT_SLIP, "SLIP"),
-	DLT_CHOICE(DLT_PPP, "PPP"),
-	DLT_CHOICE(DLT_FDDI, "FDDI"),
-	DLT_CHOICE(DLT_ATM_RFC1483, "RFC 1483 LLC-encapsulated ATM"),
-	DLT_CHOICE(DLT_RAW, "Raw IP"),
-	DLT_CHOICE(DLT_SLIP_BSDOS, "BSD/OS SLIP"),
-	DLT_CHOICE(DLT_PPP_BSDOS, "BSD/OS PPP"),
-	DLT_CHOICE(DLT_ATM_CLIP, "Linux Classical IP-over-ATM"),
-	DLT_CHOICE(DLT_PPP_SERIAL, "PPP over serial"),
-	DLT_CHOICE(DLT_PPP_ETHER, "PPPoE"),
-        DLT_CHOICE(DLT_SYMANTEC_FIREWALL, "Symantec Firewall"),
-	DLT_CHOICE(DLT_C_HDLC, "Cisco HDLC"),
-	DLT_CHOICE(DLT_IEEE802_11, "802.11"),
-	DLT_CHOICE(DLT_FRELAY, "Frame Relay"),
-	DLT_CHOICE(DLT_LOOP, "OpenBSD loopback"),
-	DLT_CHOICE(DLT_ENC, "OpenBSD encapsulated IP"),
-	DLT_CHOICE(DLT_LINUX_SLL, "Linux cooked"),
-	DLT_CHOICE(DLT_LTALK, "Localtalk"),
-	DLT_CHOICE(DLT_PFLOG, "OpenBSD pflog file"),
-	DLT_CHOICE(DLT_PFSYNC, "Packet filter state syncing"),
-	DLT_CHOICE(DLT_PRISM_HEADER, "802.11 plus Prism header"),
-	DLT_CHOICE(DLT_IP_OVER_FC, "RFC 2625 IP-over-Fibre Channel"),
-	DLT_CHOICE(DLT_SUNATM, "Sun raw ATM"),
-	DLT_CHOICE(DLT_IEEE802_11_RADIO, "802.11 plus radiotap header"),
-	DLT_CHOICE(DLT_ARCNET_LINUX, "Linux ARCNET"),
-        DLT_CHOICE(DLT_JUNIPER_MLPPP, "Juniper Multi-Link PPP"),
-	DLT_CHOICE(DLT_JUNIPER_MLFR, "Juniper Multi-Link Frame Relay"),
-        DLT_CHOICE(DLT_JUNIPER_ES, "Juniper Encryption Services PIC"),
-        DLT_CHOICE(DLT_JUNIPER_GGSN, "Juniper GGSN PIC"),
-	DLT_CHOICE(DLT_JUNIPER_MFR, "Juniper FRF.16 Frame Relay"),
-        DLT_CHOICE(DLT_JUNIPER_ATM2, "Juniper ATM2 PIC"),
-        DLT_CHOICE(DLT_JUNIPER_SERVICES, "Juniper Advanced Services PIC"),
-        DLT_CHOICE(DLT_JUNIPER_ATM1, "Juniper ATM1 PIC"),
-	DLT_CHOICE(DLT_APPLE_IP_OVER_IEEE1394, "Apple IP-over-IEEE 1394"),
-	DLT_CHOICE(DLT_MTP2_WITH_PHDR, "SS7 MTP2 with Pseudo-header"),
-	DLT_CHOICE(DLT_MTP2, "SS7 MTP2"),
-	DLT_CHOICE(DLT_MTP3, "SS7 MTP3"),
-	DLT_CHOICE(DLT_SCCP, "SS7 SCCP"),
-	DLT_CHOICE(DLT_DOCSIS, "DOCSIS"),
-	DLT_CHOICE(DLT_LINUX_IRDA, "Linux IrDA"),
-	DLT_CHOICE(DLT_IEEE802_11_RADIO_AVS, "802.11 plus AVS radio information header"),
-        DLT_CHOICE(DLT_JUNIPER_MONITOR, "Juniper Passive Monitor PIC"),
-	DLT_CHOICE(DLT_BACNET_MS_TP, "BACnet MS/TP"),
-	DLT_CHOICE(DLT_PPP_PPPD, "PPP for pppd, with direction flag"),
-	DLT_CHOICE(DLT_JUNIPER_PPPOE, "Juniper PPPoE"),
-	DLT_CHOICE(DLT_JUNIPER_PPPOE_ATM, "Juniper PPPoE/ATM"),
-	DLT_CHOICE(DLT_GPRS_LLC, "GPRS LLC"),
-	DLT_CHOICE(DLT_GPF_T, "GPF-T"),
-	DLT_CHOICE(DLT_GPF_F, "GPF-F"),
-	DLT_CHOICE(DLT_JUNIPER_PIC_PEER, "Juniper PIC Peer"),
-	DLT_CHOICE(DLT_ERF_ETH,	"Ethernet with Endace ERF header"),
-	DLT_CHOICE(DLT_ERF_POS, "Packet-over-SONET with Endace ERF header"),
-	DLT_CHOICE(DLT_LINUX_LAPD, "Linux vISDN LAPD"),
-	DLT_CHOICE(DLT_JUNIPER_ETHER, "Juniper Ethernet"),
-	DLT_CHOICE(DLT_JUNIPER_PPP, "Juniper PPP"),
-	DLT_CHOICE(DLT_JUNIPER_FRELAY, "Juniper Frame Relay"),
-	DLT_CHOICE(DLT_JUNIPER_CHDLC, "Juniper C-HDLC"),
-	DLT_CHOICE(DLT_MFR, "FRF.16 Frame Relay"),
-	DLT_CHOICE(DLT_JUNIPER_VP, "Juniper Voice PIC"),
-	DLT_CHOICE(DLT_A429, "Arinc 429"),
-	DLT_CHOICE(DLT_A653_ICM, "Arinc 653 Interpartition Communication"),
-	DLT_CHOICE(DLT_USB, "USB"),
-	DLT_CHOICE(DLT_BLUETOOTH_HCI_H4, "Bluetooth HCI UART transport layer"),
-	DLT_CHOICE(DLT_IEEE802_16_MAC_CPS, "IEEE 802.16 MAC Common Part Sublayer"),
-	DLT_CHOICE(DLT_USB_LINUX, "USB with Linux header"),
-	DLT_CHOICE(DLT_CAN20B, "Controller Area Network (CAN) v. 2.0B"),
-	DLT_CHOICE(DLT_IEEE802_15_4_LINUX, "IEEE 802.15.4 with Linux padding"),
-	DLT_CHOICE(DLT_PPI, "Per-Packet Information"),
-	DLT_CHOICE(DLT_IEEE802_16_MAC_CPS_RADIO, "IEEE 802.16 MAC Common Part Sublayer plus radiotap header"),
-	DLT_CHOICE(DLT_JUNIPER_ISM, "Juniper Integrated Service Module"),
-	DLT_CHOICE(DLT_IEEE802_15_4, "IEEE 802.15.4 with FCS"),
-	DLT_CHOICE(DLT_SITA, "SITA pseudo-header"),
-	DLT_CHOICE(DLT_ERF, "Endace ERF header"),
-	DLT_CHOICE(DLT_RAIF1, "Ethernet with u10 Networks pseudo-header"),
-	DLT_CHOICE(DLT_IPMB, "IPMB"),
-	DLT_CHOICE(DLT_JUNIPER_ST, "Juniper Secure Tunnel"),
-	DLT_CHOICE(DLT_BLUETOOTH_HCI_H4_WITH_PHDR, "Bluetooth HCI UART transport layer plus pseudo-header"),
-	DLT_CHOICE(DLT_AX25_KISS, "AX.25 with KISS header"),
-	DLT_CHOICE(DLT_IEEE802_15_4_NONASK_PHY, "IEEE 802.15.4 with non-ASK PHY data"),
-	DLT_CHOICE(DLT_MPLS, "MPLS with label as link-layer header"),
-	DLT_CHOICE(DLT_LINUX_EVDEV, "Linux evdev events"),
-	DLT_CHOICE(DLT_USB_LINUX_MMAPPED, "USB with padded Linux header"),
-	DLT_CHOICE(DLT_DECT, "DECT"),
-	DLT_CHOICE(DLT_AOS, "AOS Space Data Link protocol"),
-	DLT_CHOICE(DLT_WIHART, "Wireless HART"),
-	DLT_CHOICE(DLT_FC_2, "Fibre Channel FC-2"),
-	DLT_CHOICE(DLT_FC_2_WITH_FRAME_DELIMS, "Fibre Channel FC-2 with frame delimiters"),
-	DLT_CHOICE(DLT_IPNET, "Solaris ipnet"),
-	DLT_CHOICE(DLT_CAN_SOCKETCAN, "CAN-bus with SocketCAN headers"),
-	DLT_CHOICE(DLT_IPV4, "Raw IPv4"),
-	DLT_CHOICE(DLT_IPV6, "Raw IPv6"),
-	DLT_CHOICE(DLT_IEEE802_15_4_NOFCS, "IEEE 802.15.4 without FCS"),
-	DLT_CHOICE(DLT_DBUS, "D-Bus"),
-	DLT_CHOICE(DLT_JUNIPER_VS, "Juniper Virtual Server"),
-	DLT_CHOICE(DLT_JUNIPER_SRX_E2E, "Juniper SRX E2E"),
-	DLT_CHOICE(DLT_JUNIPER_FIBRECHANNEL, "Juniper Fibre Channel"),
-	DLT_CHOICE(DLT_DVB_CI, "DVB-CI"),
-	DLT_CHOICE(DLT_MUX27010, "MUX27010"),
-	DLT_CHOICE(DLT_STANAG_5066_D_PDU, "STANAG 5066 D_PDUs"),
-	DLT_CHOICE(DLT_JUNIPER_ATM_CEMIC, "Juniper ATM CEMIC"),
-	DLT_CHOICE(DLT_NFLOG, "Linux netfilter log messages"),
-	DLT_CHOICE(DLT_NETANALYZER, "Ethernet with Hilscher netANALYZER pseudo-header"),
-	DLT_CHOICE(DLT_NETANALYZER_TRANSPARENT, "Ethernet with Hilscher netANALYZER pseudo-header and with preamble and SFD"),
-	DLT_CHOICE(DLT_IPOIB, "RFC 4391 IP-over-Infiniband"),
-	DLT_CHOICE(DLT_MPEG_2_TS, "MPEG-2 transport stream"),
-	DLT_CHOICE(DLT_NG40, "ng40 protocol tester Iub/Iur"),
-	DLT_CHOICE(DLT_NFC_LLCP, "NFC LLCP PDUs with pseudo-header"),
-	DLT_CHOICE(DLT_INFINIBAND, "InfiniBand"),
-	DLT_CHOICE(DLT_SCTP, "SCTP"),
-	DLT_CHOICE(DLT_USBPCAP, "USB with USBPcap header"),
-	DLT_CHOICE(DLT_RTAC_SERIAL, "Schweitzer Engineering Laboratories RTAC packets"),
-	DLT_CHOICE(DLT_BLUETOOTH_LE_LL, "Bluetooth Low Energy air interface"),
-	DLT_CHOICE(DLT_NETLINK, "Linux netlink"),
-	DLT_CHOICE(DLT_BLUETOOTH_LINUX_MONITOR, "Bluetooth Linux Monitor"),
-	DLT_CHOICE(DLT_BLUETOOTH_BREDR_BB, "Bluetooth Basic Rate/Enhanced Data Rate baseband packets"),
-	DLT_CHOICE(DLT_BLUETOOTH_LE_LL_WITH_PHDR, "Bluetooth Low Energy air interface with pseudo-header"),
-	DLT_CHOICE(DLT_PROFIBUS_DL, "PROFIBUS data link layer"),
-	DLT_CHOICE(DLT_PKTAP, "Apple DLT_PKTAP"),
-	DLT_CHOICE(DLT_EPON, "Ethernet with 802.3 Clause 65 EPON preamble"),
-	DLT_CHOICE_SENTINEL
-};
-
 int
 pcap_datalink_name_to_val(const char *name)
 {
@@ -1273,93 +798,34 @@ pcap_datalink_val_to_description(int dlt)
 	return (NULL);
 }
 
-struct tstamp_type_choice {
-	const char *name;
-	const char *description;
-	int	type;
-};
-
-static struct tstamp_type_choice tstamp_type_choices[] = {
-	{ "host", "Host", PCAP_TSTAMP_HOST },
-	{ "host_lowprec", "Host, low precision", PCAP_TSTAMP_HOST_LOWPREC },
-	{ "host_hiprec", "Host, high precision", PCAP_TSTAMP_HOST_HIPREC },
-	{ "adapter", "Adapter", PCAP_TSTAMP_ADAPTER },
-	{ "adapter_unsynced", "Adapter, not synced with system time", PCAP_TSTAMP_ADAPTER_UNSYNCED },
-	{ NULL, NULL, 0 }
-};
-
-int
-pcap_tstamp_type_name_to_val(const char *name)
-{
-	int i;
-
-	for (i = 0; tstamp_type_choices[i].name != NULL; i++) {
-		if (pcap_strcasecmp(tstamp_type_choices[i].name, name) == 0)
-			return (tstamp_type_choices[i].type);
-	}
-	return (PCAP_ERROR);
-}
-
-const char *
-pcap_tstamp_type_val_to_name(int tstamp_type)
-{
-	int i;
-
-	for (i = 0; tstamp_type_choices[i].name != NULL; i++) {
-		if (tstamp_type_choices[i].type == tstamp_type)
-			return (tstamp_type_choices[i].name);
-	}
-	return (NULL);
-}
-
-const char *
-pcap_tstamp_type_val_to_description(int tstamp_type)
-{
-	int i;
-
-	for (i = 0; tstamp_type_choices[i].name != NULL; i++) {
-		if (tstamp_type_choices[i].type == tstamp_type)
-			return (tstamp_type_choices[i].description);
-	}
-	return (NULL);
-}
-
 int
 pcap_snapshot(pcap_t *p)
 {
-	if (!p->activated)
-		return (PCAP_ERROR_NOT_ACTIVATED);
 	return (p->snapshot);
 }
 
 int
 pcap_is_swapped(pcap_t *p)
 {
-	if (!p->activated)
-		return (PCAP_ERROR_NOT_ACTIVATED);
-	return (p->swapped);
+	return (p->sf.swapped);
 }
 
 int
 pcap_major_version(pcap_t *p)
 {
-	if (!p->activated)
-		return (PCAP_ERROR_NOT_ACTIVATED);
-	return (p->version_major);
+	return (p->sf.version_major);
 }
 
 int
 pcap_minor_version(pcap_t *p)
 {
-	if (!p->activated)
-		return (PCAP_ERROR_NOT_ACTIVATED);
-	return (p->version_minor);
+	return (p->sf.version_minor);
 }
 
 FILE *
 pcap_file(pcap_t *p)
 {
-	return (p->rfile);
+	return (p->sf.rfile);
 }
 
 int
@@ -1371,7 +837,7 @@ pcap_fileno(pcap_t *p)
 	if (p->adapter != NULL)
 		return ((int)(DWORD)p->adapter->hFile);
 	else
-		return (PCAP_ERROR);
+		return (-1);
 #endif
 }
 
@@ -1398,18 +864,7 @@ pcap_geterr(pcap_t *p)
 int
 pcap_getnonblock(pcap_t *p, char *errbuf)
 {
-	int ret;
-
-	ret = p->getnonblock_op(p, errbuf);
-	if (ret == -1) {
-		/*
-		 * In case somebody depended on the bug wherein
-		 * the error message was put into p->errbuf
-		 * by pcap_getnonblock_fd().
-		 */
-		strlcpy(p->errbuf, errbuf, PCAP_ERRBUF_SIZE);
-	}
-	return (ret);
+	return p->getnonblock_op(p, errbuf);
 }
 
 /*
@@ -1427,7 +882,7 @@ pcap_getnonblock_fd(pcap_t *p, char *errbuf)
 
 	fdflags = fcntl(p->fd, F_GETFL, 0);
 	if (fdflags == -1) {
-		snprintf(errbuf, PCAP_ERRBUF_SIZE, "F_GETFL: %s",
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "F_GETFL: %s",
 		    pcap_strerror(errno));
 		return (-1);
 	}
@@ -1441,18 +896,7 @@ pcap_getnonblock_fd(pcap_t *p, char *errbuf)
 int
 pcap_setnonblock(pcap_t *p, int nonblock, char *errbuf)
 {
-	int ret;
-
-	ret = p->setnonblock_op(p, nonblock, errbuf);
-	if (ret == -1) {
-		/*
-		 * In case somebody depended on the bug wherein
-		 * the error message was put into p->errbuf
-		 * by pcap_setnonblock_fd().
-		 */
-		strlcpy(p->errbuf, errbuf, PCAP_ERRBUF_SIZE);
-	}
-	return (ret);
+	return p->setnonblock_op(p, nonblock, errbuf);
 }
 
 #if !defined(WIN32) && !defined(MSDOS)
@@ -1469,7 +913,7 @@ pcap_setnonblock_fd(pcap_t *p, int nonblock, char *errbuf)
 
 	fdflags = fcntl(p->fd, F_GETFL, 0);
 	if (fdflags == -1) {
-		snprintf(errbuf, PCAP_ERRBUF_SIZE, "F_GETFL: %s",
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "F_GETFL: %s",
 		    pcap_strerror(errno));
 		return (-1);
 	}
@@ -1478,7 +922,7 @@ pcap_setnonblock_fd(pcap_t *p, int nonblock, char *errbuf)
 	else
 		fdflags &= ~O_NONBLOCK;
 	if (fcntl(p->fd, F_SETFL, fdflags) == -1) {
-		snprintf(errbuf, PCAP_ERRBUF_SIZE, "F_SETFL: %s",
+		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "F_SETFL: %s",
 		    pcap_strerror(errno));
 		return (-1);
 	}
@@ -1488,7 +932,7 @@ pcap_setnonblock_fd(pcap_t *p, int nonblock, char *errbuf)
 
 #ifdef WIN32
 /*
- * Generate a string for the last Win32-specific error (i.e. an error generated when
+ * Generate a string for the last Win32-specific error (i.e. an error generated when 
  * calling a Win32 API).
  * For errors occurred during standard C calls, we still use pcap_strerror()
  */
@@ -1532,9 +976,6 @@ pcap_statustostr(int errnum)
 	case PCAP_WARNING:
 		return("Generic warning");
 
-	case PCAP_WARNING_TSTAMP_TYPE_NOTSUP:
-		return ("That type of time stamp is not supported by that device");
-
 	case PCAP_WARNING_PROMISC_NOTSUP:
 		return ("That device doesn't support promiscuous mode");
 
@@ -1564,15 +1005,6 @@ pcap_statustostr(int errnum)
 
 	case PCAP_ERROR_IFACE_NOT_UP:
 		return ("That device is not up");
-
-	case PCAP_ERROR_CANTSET_TSTAMP_TYPE:
-		return ("That device doesn't support setting the time stamp type");
-
-	case PCAP_ERROR_PROMISC_PERM_DENIED:
-		return ("You don't have permission to capture in promiscuous mode on that device");
-
-	case PCAP_ERROR_TSTAMP_PRECISION_NOTSUP:
-		return ("That device doesn't support that time stamp precision");
 	}
 	(void)snprintf(ebuf, sizeof ebuf, "Unknown error: %d", errnum);
 	return(ebuf);
@@ -1601,7 +1033,7 @@ pcap_strerror(int errnum)
 int
 pcap_setfilter(pcap_t *p, struct bpf_program *fp)
 {
-	return (p->setfilter_op(p, fp));
+	return p->setfilter_op(p, fp);
 }
 
 /*
@@ -1616,15 +1048,15 @@ pcap_setdirection(pcap_t *p, pcap_direction_t d)
 	if (p->setdirection_op == NULL) {
 		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
 		    "Setting direction is not implemented on this platform");
-		return (-1);
+		return -1;
 	} else
-		return (p->setdirection_op(p, d));
+		return p->setdirection_op(p, d);
 }
 
 int
 pcap_stats(pcap_t *p, struct pcap_stat *ps)
 {
-	return (p->stats_op(p, ps));
+	return p->stats_op(p, ps);
 }
 
 static int
@@ -1639,7 +1071,7 @@ pcap_stats_dead(pcap_t *p, struct pcap_stat *ps _U_)
 int
 pcap_setbuff(pcap_t *p, int dim)
 {
-	return (p->setbuff_op(p, dim));
+	return p->setbuff_op(p, dim);
 }
 
 static int
@@ -1653,7 +1085,7 @@ pcap_setbuff_dead(pcap_t *p, int dim)
 int
 pcap_setmode(pcap_t *p, int mode)
 {
-	return (p->setmode_op(p, mode));
+	return p->setmode_op(p, mode);
 }
 
 static int
@@ -1667,13 +1099,7 @@ pcap_setmode_dead(pcap_t *p, int mode)
 int
 pcap_setmintocopy(pcap_t *p, int size)
 {
-	return (p->setmintocopy_op(p, size));
-}
-
-Adapter *
-pcap_get_adapter(pcap_t *p)
-{
-	return (p->getadapter_op(p));
+	return p->setmintocopy_op(p, size);
 }
 
 static int
@@ -1743,7 +1169,7 @@ pcap_do_addexit(pcap_t *p)
 void
 pcap_add_to_pcaps_to_close(pcap_t *p)
 {
-	p->next = pcaps_to_close;
+	p->md.next = pcaps_to_close;
 	pcaps_to_close = p;
 }
 
@@ -1753,7 +1179,7 @@ pcap_remove_from_pcaps_to_close(pcap_t *p)
 	pcap_t *pc, *prevpc;
 
 	for (pc = pcaps_to_close, prevpc = NULL; pc != NULL;
-	    prevpc = pc, pc = pc->next) {
+	    prevpc = pc, pc = pc->md.next) {
 		if (pc == p) {
 			/*
 			 * Found it.  Remove it from the list.
@@ -1762,12 +1188,12 @@ pcap_remove_from_pcaps_to_close(pcap_t *p)
 				/*
 				 * It was at the head of the list.
 				 */
-				pcaps_to_close = pc->next;
+				pcaps_to_close = pc->md.next;
 			} else {
 				/*
 				 * It was in the middle of the list.
 				 */
-				prevpc->next = pc->next;
+				prevpc->md.next = pc->md.next;
 			}
 			break;
 		}
@@ -1786,16 +1212,6 @@ pcap_cleanup_live_common(pcap_t *p)
 		p->dlt_list = NULL;
 		p->dlt_count = 0;
 	}
-	if (p->tstamp_type_list != NULL) {
-		free(p->tstamp_type_list);
-		p->tstamp_type_list = NULL;
-		p->tstamp_type_count = 0;
-	}
-	if (p->tstamp_precision_list != NULL) {
-		free(p->tstamp_precision_list);
-		p->tstamp_precision_list = NULL;
-		p->tstamp_precision_count = 0;
-	}
 	pcap_freecode(&p->fcode);
 #if !defined(WIN32) && !defined(MSDOS)
 	if (p->fd >= 0) {
@@ -1803,6 +1219,7 @@ pcap_cleanup_live_common(pcap_t *p)
 		p->fd = -1;
 	}
 	p->selectable_fd = -1;
+	p->send_fd = -1;
 #endif
 }
 
@@ -1813,26 +1230,16 @@ pcap_cleanup_dead(pcap_t *p _U_)
 }
 
 pcap_t *
-pcap_open_dead_with_tstamp_precision(int linktype, int snaplen, u_int precision)
+pcap_open_dead(int linktype, int snaplen)
 {
 	pcap_t *p;
 
-	switch (precision) {
-
-	case PCAP_TSTAMP_PRECISION_MICRO:
-	case PCAP_TSTAMP_PRECISION_NANO:
-		break;
-
-	default:
-		return NULL;
-	}
 	p = malloc(sizeof(*p));
 	if (p == NULL)
 		return NULL;
 	memset (p, 0, sizeof(*p));
 	p->snapshot = snaplen;
 	p->linktype = linktype;
-	p->opt.tstamp_precision = precision;
 	p->stats_op = pcap_stats_dead;
 #ifdef WIN32
 	p->setbuff_op = pcap_setbuff_dead;
@@ -1840,21 +1247,8 @@ pcap_open_dead_with_tstamp_precision(int linktype, int snaplen, u_int precision)
 	p->setmintocopy_op = pcap_setmintocopy_dead;
 #endif
 	p->cleanup_op = pcap_cleanup_dead;
-
-	/*
-	 * A "dead" pcap_t never requires special BPF code generation.
-	 */
-	p->bpf_codegen_flags = 0;
-
 	p->activated = 1;
-	return (p);
-}
-
-pcap_t *
-pcap_open_dead(int linktype, int snaplen)
-{
-	return (pcap_open_dead_with_tstamp_precision(linktype, snaplen,
-	    PCAP_TSTAMP_PRECISION_MICRO));
+	return p;
 }
 
 /*
@@ -1897,12 +1291,12 @@ pcap_close(pcap_t *p)
  * the packet doesn't pass and non-zero if the packet does pass.
  */
 int
-pcap_offline_filter(const struct bpf_program *fp, const struct pcap_pkthdr *h,
+pcap_offline_filter(struct bpf_program *fp, const struct pcap_pkthdr *h,
     const u_char *pkt)
 {
-	const struct bpf_insn *fcode = fp->bf_insns;
+	struct bpf_insn *fcode = fp->bf_insns;
 
-	if (fcode != NULL)
+	if (fcode != NULL) 
 		return (bpf_filter(fcode, pkt, h->len, h->caplen));
 	else
 		return (0);
@@ -1962,8 +1356,6 @@ pcap_lib_version(void)
 			    strlen(pcap_version_string);
 			full_pcap_version_string =
 			    malloc(full_pcap_version_string_len);
-			if (full_pcap_version_string == NULL)
-				return (NULL);
 			sprintf(full_pcap_version_string,
 			    pcap_version_string_fmt, wpcap_version_string,
 			    pcap_version_string);
@@ -1981,8 +1373,7 @@ pcap_lib_version(void)
 			    strlen(packet_version_string) +
 			    strlen(pcap_version_string);
 			full_pcap_version_string = malloc(full_pcap_version_string_len);
-			if (full_pcap_version_string == NULL)
-				return (NULL);
+
 			sprintf(full_pcap_version_string,
 			    pcap_version_string_packet_dll_fmt,
 			    wpcap_version_string, packet_version_string,
@@ -2011,8 +1402,6 @@ pcap_lib_version (void)
 		    sizeof dospfx + strlen(pcap_version_string);
 		full_pcap_version_string =
 		    malloc(full_pcap_version_string_len);
-		if (full_pcap_version_string == NULL)
-			return (NULL);
 		strcpy(full_pcap_version_string, dospfx);
 		strcat(full_pcap_version_string, pcap_version_string);
 	}

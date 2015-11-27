@@ -32,5 +32,4 @@
 /*
  * Prototypes for SocketCAN related functions
  */
-pcap_t* can_create(const char *device, char *ebuf, int *is_ours);
-int can_findalldevs(pcap_if_t **devlistp, char *errbuf);
+pcap_t* can_create(const char *device, char *ebuf);

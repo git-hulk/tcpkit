@@ -32,6 +32,11 @@
  * SUCH DAMAGE.
  */
 
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/libpcap/fad-glifc.c,v 1.7 2008-01-30 09:35:48 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -75,7 +80,7 @@ struct rtentry;		/* declarations in <net/if.h> */
  * SIOCGLIFCONF rather than SIOCGIFCONF in order to get IPv6 addresses.)
  */
 int
-pcap_findalldevs_interfaces(pcap_if_t **alldevsp, char *errbuf)
+pcap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
 {
 	pcap_if_t *devlist = NULL;
 	register int fd4, fd6, fd;
@@ -203,7 +208,8 @@ pcap_findalldevs_interfaces(pcap_if_t **alldevsp, char *errbuf)
 #endif
 
 		/*
-		 * Get the flags for this interface.
+		 * Get the flags for this interface, and skip it if it's
+		 * not up.
 		 */
 		strncpy(ifrflags.lifr_name, ifrp->lifr_name,
 		    sizeof(ifrflags.lifr_name));
@@ -218,6 +224,8 @@ pcap_findalldevs_interfaces(pcap_if_t **alldevsp, char *errbuf)
 			ret = -1;
 			break;
 		}
+		if (!(ifrflags.lifr_flags & IFF_UP))
+			continue;
 
 		/*
 		 * Get the netmask for this address on this interface.
@@ -353,6 +361,15 @@ pcap_findalldevs_interfaces(pcap_if_t **alldevsp, char *errbuf)
 	free(buf);
 	(void)close(fd6);
 	(void)close(fd4);
+
+	if (ret != -1) {
+		/*
+		 * We haven't had any errors yet; do any platform-specific
+		 * operations to add devices.
+		 */
+		if (pcap_platform_finddevs(&devlist, errbuf) < 0)
+			ret = -1;
+	}
 
 	if (ret == -1) {
 		/*

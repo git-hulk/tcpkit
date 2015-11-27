@@ -32,6 +32,11 @@
  * SUCH DAMAGE.
  */
 
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/libpcap/inet.c,v 1.79 2008-04-20 18:19:02 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -85,18 +90,6 @@ struct rtentry;		/* declarations in <net/if.h> */
     (isdigit((unsigned char)((name)[2])) || (name)[2] == '\0'))
 #endif
 
-#ifdef IFF_UP
-#define ISUP(flags) ((flags) & IFF_UP)
-#else
-#define ISUP(flags) 0
-#endif
-
-#ifdef IFF_RUNNING
-#define ISRUNNING(flags) ((flags) & IFF_RUNNING)
-#else
-#define ISRUNNING(flags) 0
-#endif
-
 struct sockaddr *
 dup_sockaddr(struct sockaddr *sa, size_t sa_length)
 {
@@ -107,85 +100,39 @@ dup_sockaddr(struct sockaddr *sa, size_t sa_length)
 	return (memcpy(newsa, sa, sa_length));
 }
 
-/*
- * Construct a "figure of merit" for an interface, for use when sorting
- * the list of interfaces, in which interfaces that are up are superior
- * to interfaces that aren't up, interfaces that are up and running are
- * superior to interfaces that are up but not running, and non-loopback
- * interfaces that are up and running are superior to loopback interfaces,
- * and interfaces with the same flags have a figure of merit that's higher
- * the lower the instance number.
- *
- * The goal is to try to put the interfaces most likely to be useful for
- * capture at the beginning of the list.
- *
- * The figure of merit, which is lower the "better" the interface is,
- * has the uppermost bit set if the interface isn't running, the bit
- * below that set if the interface isn't up, the bit below that set
- * if the interface is a loopback interface, and the interface index
- * in the 29 bits below that.  (Yes, we assume u_int is 32 bits.)
- */
-static u_int
-get_figure_of_merit(pcap_if_t *dev)
+static int
+get_instance(const char *name)
 {
-	const char *cp;
-	u_int n;
+	const char *cp, *endcp;
+	int n;
 
-	if (strcmp(dev->name, "any") == 0) {
+	if (strcmp(name, "any") == 0) {
 		/*
 		 * Give the "any" device an artificially high instance
 		 * number, so it shows up after all other non-loopback
 		 * interfaces.
 		 */
-		n = 0x1FFFFFFF;	/* 29 all-1 bits */
-	} else {
-		/*
-		 * A number at the end of the device name string is
-		 * assumed to be a unit number.
-		 */
-		cp = dev->name + strlen(dev->name) - 1;
-		while (cp-1 >= dev->name && *(cp-1) >= '0' && *(cp-1) <= '9')
-			cp--;
-		if (*cp >= '0' && *cp <= '9')
-			n = atoi(cp);
-		else
-			n = 0;
+		return INT_MAX;
 	}
-	if (!(dev->flags & PCAP_IF_RUNNING))
-		n |= 0x80000000;
-	if (!(dev->flags & PCAP_IF_UP))
-		n |= 0x40000000;
-	if (dev->flags & PCAP_IF_LOOPBACK)
-		n |= 0x20000000;
+
+	endcp = name + strlen(name);
+	for (cp = name; cp < endcp && !isdigit((unsigned char)*cp); ++cp)
+		continue;
+
+	if (isdigit((unsigned char)*cp))
+		n = atoi(cp);
+	else
+		n = 0;
 	return (n);
 }
 
-/*
- * Look for a given device in the specified list of devices.
- *
- * If we find it, return 0 and set *curdev_ret to point to it.
- *
- * If we don't find it, check whether we can open it:
- *
- *     If that fails with PCAP_ERROR_NO_SUCH_DEVICE or
- *     PCAP_ERROR_IFACE_NOT_UP, don't attempt to add an entry for
- *     it, as that probably means it exists but doesn't support
- *     packet capture.
- *
- *     Otherwise, attempt to add an entry for it, with the specified
- *     ifnet flags and description, and, if that succeeds, return 0
- *     and set *curdev_ret to point to the new entry, otherwise
- *     return PCAP_ERROR and set errbuf to an error message.
- */
 int
 add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
     u_int flags, const char *description, char *errbuf)
 {
 	pcap_t *p;
 	pcap_if_t *curdev, *prevdev, *nextdev;
-	u_int this_figure_of_merit, nextdev_figure_of_merit;
-	char open_errbuf[PCAP_ERRBUF_SIZE];
-	int ret;
+	int this_instance;
 
 	/*
 	 * Is there already an entry in the list for this interface?
@@ -245,72 +192,23 @@ add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
 			}
 			strcpy(en_name, "en");
 			strcat(en_name, name + 3);
-			p = pcap_create(en_name, open_errbuf);
+			p = pcap_open_live(en_name, 68, 0, 0, errbuf);
 			free(en_name);
 		} else
 #endif /* __APPLE */
-		p = pcap_create(name, open_errbuf);
+		p = pcap_open_live(name, 68, 0, 0, errbuf);
 		if (p == NULL) {
 			/*
-			 * The attempt to create the pcap_t failed;
-			 * that's probably an indication that we're
-			 * out of memory.
-			 *
-			 * Don't bother including this interface,
-			 * but don't treat it as an error.
+			 * No.  Don't bother including it.
+			 * Don't treat this as an error, though.
 			 */
 			*curdev_ret = NULL;
 			return (0);
 		}
-		/* Small snaplen, so we don't try to allocate much memory. */
-		pcap_set_snaplen(p, 68);
-		ret = pcap_activate(p);
 		pcap_close(p);
-		switch (ret) {
-
-		case PCAP_ERROR_NO_SUCH_DEVICE:
-		case PCAP_ERROR_IFACE_NOT_UP:
-			/*
-			 * We expect these two errors - they're the
-			 * reason we try to open the device.
-			 *
-			 * PCAP_ERROR_NO_SUCH_DEVICE typically means
-			 * "there's no such device *known to the
-			 * OS's capture mechanism*", so, even though
-			 * it might be a valid network interface, you
-			 * can't capture on it (e.g., the loopback
-			 * device in Solaris up to Solaris 10, or
-			 * the vmnet devices in OS X with VMware
-			 * Fusion).  We don't include those devices
-			 * in our list of devices, as there's no
-			 * point in doing so - they're not available
-			 * for capture.
-			 *
-			 * PCAP_ERROR_IFACE_NOT_UP means that the
-			 * OS's capture mechanism doesn't work on
-			 * interfaces not marked as up; some capture
-			 * mechanisms *do* support that, so we no
-			 * longer reject those interfaces out of hand,
-			 * but we *do* want to reject them if they
-			 * can't be opened for capture.
-			 */
-			*curdev_ret = NULL;
-			return (0);
-		}
 
 		/*
-		 * Yes, we can open it, or we can't, for some other
-		 * reason.
-		 *
-		 * If we can open it, we want to offer it for
-		 * capture, as you can capture on it.  If we can't,
-		 * we want to offer it for capture, so that, if
-		 * the user tries to capture on it, they'll get
-		 * an error and they'll know why they can't
-		 * capture on it (e.g., insufficient permissions)
-		 * or they'll report it as a problem (and then
-		 * have the error message to provide as information).
-		 *
+		 * Yes, we can open it.
 		 * Allocate a new entry.
 		 */
 		curdev = malloc(sizeof(pcap_if_t));
@@ -353,22 +251,20 @@ add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
 		curdev->flags = 0;
 		if (ISLOOPBACK(name, flags))
 			curdev->flags |= PCAP_IF_LOOPBACK;
-		if (ISUP(flags))
-			curdev->flags |= PCAP_IF_UP;
-		if (ISRUNNING(flags))
-			curdev->flags |= PCAP_IF_RUNNING;
 
 		/*
 		 * Add it to the list, in the appropriate location.
-		 * First, get the "figure of merit" for this
-		 * interface.
+		 * First, get the instance number of this interface.
 		 */
-		this_figure_of_merit = get_figure_of_merit(curdev);
+		this_instance = get_instance(name);
 
 		/*
-		 * Now look for the last interface with an figure of merit
-		 * less than or equal to the new interface's figure of
-		 * merit.
+		 * Now look for the last interface with an instance number
+		 * less than or equal to the new interface's instance
+		 * number - except that non-loopback interfaces are
+		 * arbitrarily treated as having interface numbers less
+		 * than those of loopback interfaces, so the loopback
+		 * interfaces are put at the end of the list.
 		 *
 		 * We start with "prevdev" being NULL, meaning we're before
 		 * the first element in the list.
@@ -398,13 +294,34 @@ add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
 			}
 
 			/*
-			 * Is the new interface's figure of merit less
-			 * than the next interface's figure of merit,
-			 * meaning that the new interface is better
-			 * than the next interface?
+			 * Is the new interface a non-loopback interface
+			 * and the next interface a loopback interface?
 			 */
-			nextdev_figure_of_merit = get_figure_of_merit(nextdev);
-			if (this_figure_of_merit < nextdev_figure_of_merit) {
+			if (!(curdev->flags & PCAP_IF_LOOPBACK) &&
+			    (nextdev->flags & PCAP_IF_LOOPBACK)) {
+				/*
+				 * Yes, we should put the new entry
+				 * before "nextdev", i.e. after "prevdev".
+				 */
+				break;
+			}
+
+			/*
+			 * Is the new interface's instance number less
+			 * than the next interface's instance number,
+			 * and is it the case that the new interface is a
+			 * non-loopback interface or the next interface is
+			 * a loopback interface?
+			 *
+			 * (The goal of both loopback tests is to make
+			 * sure that we never put a loopback interface
+			 * before any non-loopback interface and that we
+			 * always put a non-loopback interface before all
+			 * loopback interfaces.)
+			 */
+			if (this_instance < get_instance(nextdev->name) &&
+			    (!(curdev->flags & PCAP_IF_LOOPBACK) ||
+			       (nextdev->flags & PCAP_IF_LOOPBACK))) {
 				/*
 				 * Yes - we should put the new entry
 				 * before "nextdev", i.e. after "prevdev".
@@ -440,9 +357,6 @@ add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
 }
 
 /*
- * Try to get a description for a given device.
- * Returns a mallocated description if it could and NULL if it couldn't.
- *
  * XXX - on FreeBSDs that support it, should it get the sysctl named
  * "dev.{adapter family name}.{adapter unit}.%desc" to get a description
  * of the adapter?  Note that "dev.an.0.%desc" is "Aironet PC4500/PC4800"
@@ -488,114 +402,6 @@ add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
  * Do any other UN*Xes, or desktop environments support getting a
  * description?
  */
-static char *
-get_if_description(const char *name)
-{
-#ifdef SIOCGIFDESCR
-	char *description = NULL;
-	int s;
-	struct ifreq ifrdesc;
-#ifndef IFDESCRSIZE
-	size_t descrlen = 64;
-#else
-	size_t descrlen = IFDESCRSIZE;
-#endif /* IFDESCRSIZE */
-
-	/*
-	 * Get the description for the interface.
-	 */
-	memset(&ifrdesc, 0, sizeof ifrdesc);
-	strlcpy(ifrdesc.ifr_name, name, sizeof ifrdesc.ifr_name);
-	s = socket(AF_INET, SOCK_DGRAM, 0);
-	if (s >= 0) {
-#ifdef __FreeBSD__
-		/*
-		 * On FreeBSD, if the buffer isn't big enough for the
-		 * description, the ioctl succeeds, but the description
-		 * isn't copied, ifr_buffer.length is set to the description
-		 * length, and ifr_buffer.buffer is set to NULL.
-		 */
-		for (;;) {
-			free(description);
-			if ((description = malloc(descrlen)) != NULL) {
-				ifrdesc.ifr_buffer.buffer = description;
-				ifrdesc.ifr_buffer.length = descrlen;
-				if (ioctl(s, SIOCGIFDESCR, &ifrdesc) == 0) {
-					if (ifrdesc.ifr_buffer.buffer ==
-					    description)
-						break;
-					else
-						descrlen = ifrdesc.ifr_buffer.length;
-				} else {
-					/*
-					 * Failed to get interface description.
-					 */
-					free(description);
-					description = NULL;
-					break;
-				}
-			} else
-				break;
-		}
-#else /* __FreeBSD__ */
-		/*
-		 * The only other OS that currently supports
-		 * SIOCGIFDESCR is OpenBSD, and it has no way
-		 * to get the description length - it's clamped
-		 * to a maximum of IFDESCRSIZE.
-		 */
-		if ((description = malloc(descrlen)) != NULL) {
-			ifrdesc.ifr_data = (caddr_t)description;
-			if (ioctl(s, SIOCGIFDESCR, &ifrdesc) != 0) {
-				/*
-				 * Failed to get interface description.
-				 */
-				free(description);
-				description = NULL;
-			}
-		}
-#endif /* __FreeBSD__ */
-		close(s);
-		if (description != NULL && strlen(description) == 0) {
-			free(description);
-			description = NULL;
-		}
-	}
-
-	return (description);
-#else /* SIOCGIFDESCR */
-	return (NULL);
-#endif /* SIOCGIFDESCR */
-}
-
-/*
- * Try to get a description for a given device, and then look for that
- * device in the specified list of devices.
- *
- * If we find it, then, if the specified address isn't null, add it to
- * the list of addresses for the device and return 0.
- *
- * If we don't find it, check whether we can open it:
- *
- *     If that fails with PCAP_ERROR_NO_SUCH_DEVICE or
- *     PCAP_ERROR_IFACE_NOT_UP, don't attempt to add an entry for
- *     it, as that probably means it exists but doesn't support
- *     packet capture.
- *
- *     Otherwise, attempt to add an entry for it, with the specified
- *     ifnet flags and description, and, if that succeeds, add the
- *     specified address to its list of addresses if that address is
- *     non-null, set *curdev_ret to point to the new entry, and
- *     return 0, otherwise return PCAP_ERROR and set errbuf to an
- *     error message.
- *
- * (We can get called with a null address because we might get a list
- * of interface name/address combinations from the underlying OS, with
- * the address being absent in some cases, rather than a list of
- * interfaces with each interface having a list of addresses, so this
- * call may be the only call made to add to the list, and we want to
- * add interfaces even if they have no addresses.)
- */
 int
 add_addr_to_iflist(pcap_if_t **alldevs, const char *name, u_int flags,
     struct sockaddr *addr, size_t addr_size,
@@ -604,10 +410,55 @@ add_addr_to_iflist(pcap_if_t **alldevs, const char *name, u_int flags,
     struct sockaddr *dstaddr, size_t dstaddr_size,
     char *errbuf)
 {
-	char *description;
 	pcap_if_t *curdev;
+	char *description = NULL;
+	pcap_addr_t *curaddr, *prevaddr, *nextaddr;
+#ifdef SIOCGIFDESCR
+	int s;
+	struct ifreq ifrdesc;
+#ifndef IFDESCRSIZE
+	size_t descrlen = 64;
+#else
+	size_t descrlen = IFDESCRSIZE;
+#endif /* IFDESCRSIZE */
+#endif /* SIOCGIFDESCR */
 
-	description = get_if_description(name);
+#ifdef SIOCGIFDESCR
+	/*
+	 * Get the description for the interface.
+	 */
+	memset(&ifrdesc, 0, sizeof ifrdesc);
+	strlcpy(ifrdesc.ifr_name, name, sizeof ifrdesc.ifr_name);
+	s = socket(AF_INET, SOCK_DGRAM, 0);
+	if (s >= 0) {
+		for (;;) {
+			free(description);
+			if ((description = malloc(descrlen)) != NULL) {
+#ifdef __FreeBSD__
+				ifrdesc.ifr_buffer.buffer = description;
+				ifrdesc.ifr_buffer.length = descrlen;
+#else /* __FreeBSD__ */
+				ifrdesc.ifr_data = (caddr_t)description;
+#endif /* __FreeBSD__ */
+				if (ioctl(s, SIOCGIFDESCR, &ifrdesc) == 0)
+					break;
+#ifdef __FreeBSD__
+				else if (errno == ENAMETOOLONG)
+					descrlen = ifrdesc.ifr_buffer.length;
+#endif /* __FreeBSD__ */
+				else
+					break;
+			} else
+				break;
+		}
+		close(s);
+		if (description != NULL && strlen(description) == 0) {
+			free(description);
+			description = NULL;
+		}
+	}
+#endif /* SIOCGIFDESCR */
+
 	if (add_or_find_if(&curdev, alldevs, name, flags, description,
 	    errbuf) == -1) {
 		free(description);
@@ -625,42 +476,12 @@ add_addr_to_iflist(pcap_if_t **alldevs, const char *name, u_int flags,
 		return (0);
 	}
 
-	if (addr == NULL) {
-		/*
-		 * There's no address to add; this entry just meant
-		 * "here's a new interface".
-		 */
-		return (0);
-	}
-
 	/*
-	 * "curdev" is an entry for this interface, and we have an
-	 * address for it; add an entry for that address to the
-	 * interface's list of addresses.
+	 * "curdev" is an entry for this interface; add an entry for this
+	 * address to its list of addresses.
 	 *
 	 * Allocate the new entry and fill it in.
 	 */
-	return (add_addr_to_dev(curdev, addr, addr_size, netmask,
-	    netmask_size, broadaddr, broadaddr_size, dstaddr,
-	    dstaddr_size, errbuf));
-}
-
-/*
- * Add an entry to the list of addresses for an interface.
- * "curdev" is the entry for that interface.
- * If this is the first IP address added to the interface, move it
- * in the list as appropriate.
- */
-int
-add_addr_to_dev(pcap_if_t *curdev,
-    struct sockaddr *addr, size_t addr_size,
-    struct sockaddr *netmask, size_t netmask_size,
-    struct sockaddr *broadaddr, size_t broadaddr_size,
-    struct sockaddr *dstaddr, size_t dstaddr_size,
-    char *errbuf)
-{
-	pcap_addr_t *curaddr, *prevaddr, *nextaddr;
-
 	curaddr = malloc(sizeof(pcap_addr_t));
 	if (curaddr == NULL) {
 		(void)snprintf(errbuf, PCAP_ERRBUF_SIZE,
@@ -754,23 +575,6 @@ add_addr_to_dev(pcap_if_t *curdev,
 	return (0);
 }
 
-/*
- * Look for a given device in the specified list of devices.
- *
- * If we find it, return 0.
- *
- * If we don't find it, check whether we can open it:
- *
- *     If that fails with PCAP_ERROR_NO_SUCH_DEVICE or
- *     PCAP_ERROR_IFACE_NOT_UP, don't attempt to add an entry for
- *     it, as that probably means it exists but doesn't support
- *     packet capture.
- *
- *     Otherwise, attempt to add an entry for it, with the specified
- *     ifnet flags and description, and, if that succeeds, return 0
- *     and set *curdev_ret to point to the new entry, otherwise
- *     return PCAP_ERROR and set errbuf to an error message.
- */
 int
 pcap_add_if(pcap_if_t **devlist, const char *name, u_int flags,
     const char *description, char *errbuf)
@@ -924,7 +728,7 @@ pcap_lookupnet(device, netp, maskp, errbuf)
 	/* XXX Work around Linux kernel bug */
 	ifr.ifr_addr.sa_family = AF_INET;
 #endif
-	(void)strlcpy(ifr.ifr_name, device, sizeof(ifr.ifr_name));
+	(void)strncpy(ifr.ifr_name, device, sizeof(ifr.ifr_name));
 	if (ioctl(fd, SIOCGIFADDR, (char *)&ifr) < 0) {
 		if (errno == EADDRNOTAVAIL) {
 			(void)snprintf(errbuf, PCAP_ERRBUF_SIZE,
@@ -944,7 +748,7 @@ pcap_lookupnet(device, netp, maskp, errbuf)
 	/* XXX Work around Linux kernel bug */
 	ifr.ifr_addr.sa_family = AF_INET;
 #endif
-	(void)strlcpy(ifr.ifr_name, device, sizeof(ifr.ifr_name));
+	(void)strncpy(ifr.ifr_name, device, sizeof(ifr.ifr_name));
 	if (ioctl(fd, SIOCGIFNETMASK, (char *)&ifr) < 0) {
 		(void)snprintf(errbuf, PCAP_ERRBUF_SIZE,
 		    "SIOCGIFNETMASK: %s: %s", device, pcap_strerror(errno));
@@ -985,14 +789,14 @@ pcap_lookupdev(errbuf)
 	DWORD dwWindowsMajorVersion;
 	dwVersion = GetVersion();	/* get the OS version */
 	dwWindowsMajorVersion = (DWORD)(LOBYTE(LOWORD(dwVersion)));
-
+	
 	if (dwVersion >= 0x80000000 && dwWindowsMajorVersion >= 4) {
 		/*
 		 * Windows 95, 98, ME.
 		 */
 		ULONG NameLength = 8192;
 		static char AdaptersName[8192];
-
+		
 		if (PacketGetAdapterNames(AdaptersName,&NameLength) )
 			return (AdaptersName);
 		else
@@ -1046,16 +850,14 @@ pcap_lookupdev(errbuf)
 		 */
 		while(NAdapts--)
 		{
-			char* tmp = (char*)tUstr;
-			strcpy(tmp, tAstr);
-			tmp += strlen(tAstr) + 1;
-			tUstr = (WCHAR*)tmp;
+			strcpy((char*)tUstr, tAstr);
+			(char*)tUstr += strlen(tAstr) + 1;;
 			tAstr += strlen(tAstr) + 1;
 		}
 
 		free(TAdaptersName);
 		return (char *)(AdaptersName);
-	}
+	}	
 }
 
 
@@ -1065,7 +867,7 @@ pcap_lookupnet(device, netp, maskp, errbuf)
 	register bpf_u_int32 *netp, *maskp;
 	register char *errbuf;
 {
-	/*
+	/* 
 	 * We need only the first IPv4 address, so we must scan the array returned by PacketGetNetInfo()
 	 * in order to skip non IPv4 (i.e. IPv6 addresses)
 	 */
@@ -1091,7 +893,7 @@ pcap_lookupnet(device, netp, maskp, errbuf)
 			*netp &= *maskp;
 			return (0);
 		}
-
+				
 	}
 
 	*netp = *maskp = 0;

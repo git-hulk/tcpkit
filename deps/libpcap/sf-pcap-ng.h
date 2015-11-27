@@ -26,7 +26,6 @@
 #ifndef sf_pcap_ng_h
 #define	sf_pcap_ng_h
 
-extern pcap_t *pcap_ng_check_header(bpf_u_int32 magic, FILE *fp,
-    u_int precision, char *errbuf, int *err);
+extern int pcap_ng_check_header(pcap_t *, bpf_u_int32, FILE *, char *);
 
 #endif

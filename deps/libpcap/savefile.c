@@ -28,6 +28,11 @@
  * dependent values so we can print the dump file on any architecture.
  */
 
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/libpcap/savefile.c,v 1.183 2008-12-23 20:13:29 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -89,16 +94,10 @@ static int
 sf_setnonblock(pcap_t *p, int nonblock, char *errbuf)
 {
 	/*
-	 * This is a savefile, not a live capture file, so reject
-	 * requests to put it in non-blocking mode.  (If it's a
-	 * pipe, it could be put in non-blocking mode, but that
-	 * would significantly complicate the code to read packets,
-	 * as it would have to handle reading partial packets and
-	 * keeping the state of the read.)
+	 * This is a savefile, not a live capture file, so ignore
+	 * requests to put it in non-blocking mode.
 	 */
-	snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
-	    "Savefiles cannot be put into non-blocking mode");
-	return (-1);
+	return (0);
 }
 
 static int
@@ -155,19 +154,17 @@ sf_setdirection(pcap_t *p, pcap_direction_t d)
 	return (-1);
 }
 
-void
+static void
 sf_cleanup(pcap_t *p)
 {
-	if (p->rfile != stdin)
-		(void)fclose(p->rfile);
+	if (p->sf.rfile != stdin)
+		(void)fclose(p->sf.rfile);
 	if (p->buffer != NULL)
 		free(p->buffer);
-	pcap_freecode(&p->fcode);
 }
 
 pcap_t *
-pcap_open_offline_with_tstamp_precision(const char *fname, u_int precision,
-    char *errbuf)
+pcap_open_offline(const char *fname, char *errbuf)
 {
 	FILE *fp;
 	pcap_t *p;
@@ -195,7 +192,7 @@ pcap_open_offline_with_tstamp_precision(const char *fname, u_int precision,
 			return (NULL);
 		}
 	}
-	p = pcap_fopen_offline_with_tstamp_precision(fp, precision, errbuf);
+	p = pcap_fopen_offline(fp, errbuf);
 	if (p == NULL) {
 		if (fp != stdin)
 			fclose(fp);
@@ -203,46 +200,31 @@ pcap_open_offline_with_tstamp_precision(const char *fname, u_int precision,
 	return (p);
 }
 
-pcap_t *
-pcap_open_offline(const char *fname, char *errbuf)
-{
-	return (pcap_open_offline_with_tstamp_precision(fname,
-	    PCAP_TSTAMP_PRECISION_MICRO, errbuf));
-}
-
 #ifdef WIN32
-pcap_t* pcap_hopen_offline_with_tstamp_precision(intptr_t osfd, u_int precision,
-    char *errbuf)
+pcap_t* pcap_hopen_offline(intptr_t osfd, char *errbuf)
 {
 	int fd;
 	FILE *file;
 
 	fd = _open_osfhandle(osfd, _O_RDONLY);
-	if ( fd < 0 )
+	if ( fd < 0 ) 
 	{
 		snprintf(errbuf, PCAP_ERRBUF_SIZE, pcap_strerror(errno));
 		return NULL;
 	}
 
 	file = _fdopen(fd, "rb");
-	if ( file == NULL )
+	if ( file == NULL ) 
 	{
 		snprintf(errbuf, PCAP_ERRBUF_SIZE, pcap_strerror(errno));
 		return NULL;
 	}
 
-	return pcap_fopen_offline_with_tstamp_precision(file, precision,
-	    errbuf);
-}
-
-pcap_t* pcap_hopen_offline(intptr_t osfd, char *errbuf)
-{
-	return pcap_hopen_offline_with_tstamp_precision(osfd,
-	    PCAP_TSTAMP_PRECISION_MICRO, errbuf);
+	return pcap_fopen_offline(file, errbuf);
 }
 #endif
 
-static pcap_t *(*check_headers[])(bpf_u_int32, FILE *, u_int, char *, int *) = {
+static int (*check_headers[])(pcap_t *, bpf_u_int32, FILE *, char *) = {
 	pcap_check_header,
 	pcap_ng_check_header
 };
@@ -253,14 +235,16 @@ static pcap_t *(*check_headers[])(bpf_u_int32, FILE *, u_int, char *, int *) = {
 static
 #endif
 pcap_t *
-pcap_fopen_offline_with_tstamp_precision(FILE *fp, u_int precision,
-    char *errbuf)
+pcap_fopen_offline(FILE *fp, char *errbuf)
 {
 	register pcap_t *p;
 	bpf_u_int32 magic;
 	size_t amt_read;
 	u_int i;
-	int err;
+
+	p = pcap_create_common("(savefile)", errbuf);
+	if (p == NULL)
+		return (NULL);
 
 	/*
 	 * Read the first 4 bytes of the file; the network analyzer dump
@@ -281,23 +265,26 @@ pcap_fopen_offline_with_tstamp_precision(FILE *fp, u_int precision,
 			    (unsigned long)sizeof(magic),
 			    (unsigned long)amt_read);
 		}
-		return (NULL);
+		goto bad;
 	}
 
 	/*
 	 * Try all file types.
 	 */
 	for (i = 0; i < N_FILE_TYPES; i++) {
-		p = (*check_headers[i])(magic, fp, precision, errbuf, &err);
-		if (p != NULL) {
-			/* Yup, that's it. */
-			goto found;
-		}
-		if (err) {
+		switch ((*check_headers[i])(p, magic, fp, errbuf)) {
+
+		case -1:
 			/*
 			 * Error trying to read the header.
 			 */
-			return (NULL);
+			goto bad;
+
+		case 1:
+			/*
+			 * Yup, that's it.
+			 */
+			goto found;
 		}
 	}
 
@@ -305,13 +292,15 @@ pcap_fopen_offline_with_tstamp_precision(FILE *fp, u_int precision,
 	 * Well, who knows what this mess is....
 	 */
 	snprintf(errbuf, PCAP_ERRBUF_SIZE, "unknown file format");
-	return (NULL);
+	goto bad;
 
 found:
-	p->rfile = fp;
+	p->sf.rfile = fp;
 
+#ifdef PCAP_FDDIPAD
 	/* Padding only needed for live capture fcode */
 	p->fddipad = 0;
+#endif
 
 #if !defined(WIN32) && !defined(MSDOS)
 	/*
@@ -337,31 +326,13 @@ found:
 	p->setmode_op = sf_setmode;
 	p->setmintocopy_op = sf_setmintocopy;
 #endif
-
-	/*
-	 * For offline captures, the standard one-shot callback can
-	 * be used for pcap_next()/pcap_next_ex().
-	 */
-	p->oneshot_callback = pcap_oneshot;
-
-	/*
-	 * Savefiles never require special BPF code generation.
-	 */
-	p->bpf_codegen_flags = 0;
-
+	p->cleanup_op = sf_cleanup;
 	p->activated = 1;
 
 	return (p);
-}
-
-#ifdef WIN32
-static
-#endif
-pcap_t *
-pcap_fopen_offline(FILE *fp, char *errbuf)
-{
-	return (pcap_fopen_offline_with_tstamp_precision(fp,
-	    PCAP_TSTAMP_PRECISION_MICRO, errbuf));
+ bad:
+	free(p);
+	return (NULL);
 }
 
 /*
@@ -397,7 +368,7 @@ pcap_offline_read(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 				return (n);
 		}
 
-		status = p->next_packet_op(p, &h, &data);
+		status = p->sf.next_packet_op(p, &h, &data);
 		if (status) {
 			if (status == 1)
 				return (0);
@@ -405,7 +376,7 @@ pcap_offline_read(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 		}
 
 		if ((fcode = p->fcode.bf_insns) == NULL ||
-		    bpf_filter(fcode, data, h.len, h.caplen)) {
+		    bpf_filter(fcode, p->buffer, h.len, h.caplen)) {
 			(*callback)(user, &h, data);
 			if (++n >= cnt && cnt > 0)
 				break;

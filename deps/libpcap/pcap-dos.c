@@ -4,6 +4,8 @@
  *
  *  pcap-dos.c: Interface to PKTDRVR, NDIS2 and 32-bit pmode
  *              network drivers.
+ *
+ * @(#) $Header: /tcpdump/master/libpcap/pcap-dos.c,v 1.7 2008-04-22 17:16:30 guy Exp $ (LBL)
  */
 
 #include <stdio.h>
@@ -141,19 +143,11 @@ static struct device *get_device (int fd)
   return handle_to_device [fd-1];
 }
 
-/*
- * Private data for capturing on MS-DOS.
- */
-struct pcap_dos {
-	void (*wait_proc)(void); /*          call proc while waiting */
-	struct pcap_stat stat;
-};
-
-pcap_t *pcap_create_interface (const char *device, char *ebuf)
+pcap_t *pcap_create (const char *device, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(device, ebuf, sizeof (struct pcap_dos));
+	p = pcap_create_common(device, ebuf);
 	if (p == NULL)
 		return (NULL);
 
@@ -166,9 +160,7 @@ pcap_t *pcap_create_interface (const char *device, char *ebuf)
  * network packets.
  */
 static int pcap_activate_dos (pcap_t *pcap)
-{
-  struct pcap_dos *pcapd = pcap->priv;
-
+{ 
   if (pcap->opt.rfmon) {
     /*
      * No monitor mode on DOS.
@@ -197,7 +189,7 @@ static int pcap_activate_dos (pcap_t *pcap)
         !first_init(pcap->opt.source, pcap->errbuf, pcap->opt.promisc))
     {
       return (PCAP_ERROR);
-    }
+    } 
     atexit (close_driver);
   }
   else if (stricmp(active_dev->name,pcap->opt.source))
@@ -218,16 +210,15 @@ static int pcap_activate_dos (pcap_t *pcap)
 static int
 pcap_read_one (pcap_t *p, pcap_handler callback, u_char *data)
 {
-  struct pcap_dos *pd = p->priv;
   struct pcap_pkthdr pcap;
-  struct timeval     now, expiry = { 0,0 };
+  struct timeval     now, expiry;
   BYTE  *rx_buf;
   int    rx_len = 0;
 
-  if (p->opt.timeout > 0)
+  if (p->md.timeout > 0)
   {
     gettimeofday2 (&now, NULL);
-    expiry.tv_usec = now.tv_usec + 1000UL * p->opt.timeout;
+    expiry.tv_usec = now.tv_usec + 1000UL * p->md.timeout;
     expiry.tv_sec  = now.tv_sec;
     while (expiry.tv_usec >= 1000000L)
     {
@@ -296,10 +287,10 @@ pcap_read_one (pcap_t *p, pcap_handler callback, u_char *data)
       return (1);
     }
 
-    /* If not to wait for a packet or pcap_cleanup_dos() called from
+    /* If not to wait for a packet or pcap_close() called from
      * e.g. SIGINT handler, exit loop now.
      */
-    if (p->opt.timeout <= 0 || (volatile int)p->fd <= 0)
+    if (p->md.timeout <= 0 || (volatile int)p->fd <= 0)
        break;
 
     gettimeofday2 (&now, NULL);
@@ -317,7 +308,7 @@ pcap_read_one (pcap_t *p, pcap_handler callback, u_char *data)
 
   if (rx_len < 0)            /* receive error */
   {
-    pd->stat.ps_drop++;
+    p->md.stat.ps_drop++;
 #ifdef USE_32BIT_DRIVERS
     if (pcap_pkt_debug > 1)
        printk ("pkt-err %s\n", pktInfo.error);
@@ -330,10 +321,9 @@ pcap_read_one (pcap_t *p, pcap_handler callback, u_char *data)
 static int
 pcap_read_dos (pcap_t *p, int cnt, pcap_handler callback, u_char *data)
 {
-  struct pcap_dos *pd = p->priv;
   int rc, num = 0;
 
-  while (num <= cnt || PACKET_COUNT_IS_UNLIMITED(cnt))
+  while (num <= cnt || (cnt < 0))
   {
     if (p->fd <= 0)
        return (-1);
@@ -353,7 +343,6 @@ pcap_read_dos (pcap_t *p, int cnt, pcap_handler callback, u_char *data)
 static int pcap_stats_dos (pcap_t *p, struct pcap_stat *ps)
 {
   struct net_device_stats *stats;
-  struct pcap_dos         *pd;
   struct device           *dev = p ? get_device(p->fd) : NULL;
 
   if (!dev)
@@ -370,13 +359,12 @@ static int pcap_stats_dos (pcap_t *p, struct pcap_stat *ps)
 
   FLUSHK();
 
-  pd = p->priv;
-  pd->stat.ps_recv   = stats->rx_packets;
-  pd->stat.ps_drop  += stats->rx_missed_errors;
-  pd->stat.ps_ifdrop = stats->rx_dropped +  /* queue full */
+  p->md.stat.ps_recv   = stats->rx_packets;
+  p->md.stat.ps_drop  += stats->rx_missed_errors;
+  p->md.stat.ps_ifdrop = stats->rx_dropped +  /* queue full */
                          stats->rx_errors;    /* HW errors */
   if (ps)
-     *ps = pd->stat;
+     *ps = p->md.stat;
 
   return (0);
 }
@@ -401,7 +389,7 @@ int pcap_stats_ex (pcap_t *p, struct pcap_stat_ex *se)
     strlcpy (p->errbuf, "pktdrvr doesn't have detailed statistics",
              PCAP_ERRBUF_SIZE);
     return (-1);
-  }
+  }             
   memcpy (se, (*dev->get_stats)(dev), sizeof(*se));
   return (0);
 }
@@ -440,13 +428,10 @@ u_long pcap_filter_packets (void)
  */
 static void pcap_cleanup_dos (pcap_t *p)
 {
-  struct pcap_dos *pd;
-
   if (p && !exc_occured)
   {
-    pd = p->priv;
     if (pcap_stats(p,NULL) < 0)
-       pd->stat.ps_drop = 0;
+       p->md.stat.ps_drop = 0;
     if (!get_device(p->fd))
        return;
 
@@ -520,7 +505,7 @@ int pcap_lookupnet (const char *device, bpf_u_int32 *localnet,
   }
   ARGSUSED (device);
   return (0);
-}
+}      
 
 /*
  * Get a list of all interfaces that are present and that we probe okay.
@@ -605,12 +590,10 @@ void pcap_assert (const char *what, const char *file, unsigned line)
  */
 void pcap_set_wait (pcap_t *p, void (*yield)(void), int wait)
 {
-  struct pcap_dos *pd;
   if (p)
   {
-    pd                   = p->priv;
-    pd->wait_proc        = yield;
-    p->opt.timeout        = wait;
+    p->wait_proc         = yield;
+    p->md.timeout        = wait;
   }
 }
 
@@ -960,7 +943,7 @@ static int init_watt32 (struct pcap *pcap, const char *dev_name, char *err_buf)
    *            have default values. Should be taken from another
    *            ini-file/environment in any case (ref. tcpdump.ini)
    */
-  _watt_is_init = 1;
+  _watt_is_init = 1;  
 
   if (!using_pktdrv || !has_ip_addr)  /* for now .... */
   {
@@ -1092,7 +1075,7 @@ static int pkt_open (struct device *dev)
 
   if (!PktInitDriver(mode))
      return (0);
-
+ 
   PktResetStatistics (pktInfo.handle);
   PktQueueBusy (FALSE);
   return (1);
@@ -1290,7 +1273,7 @@ struct device rtl8139_dev LOCKED_VAR = {
               0,0,0,0,0,0,
               &cs89_dev,
               rtl8139_probe     /* dev->probe routine */
-            };
+            };            
 
 /*
  * Dequeue routine is called by polling.

@@ -22,6 +22,11 @@
  *	Extraction/creation by Jeffrey Mogul, DECWRL
  */
 
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/libpcap/pcap-pf.c,v 1.97 2008-04-14 20:40:58 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -69,24 +74,6 @@ struct rtentry;
 #include "os-proto.h"
 #endif
 
-/*
- * FDDI packets are padded to make everything line up on a nice boundary.
- */
-#define       PCAP_FDDIPAD 3
-
-/*
- * Private data for capturing on Ultrix and DEC OSF/1^WDigital UNIX^W^W
- * Tru64 UNIX packetfilter devices.
- */
-struct pcap_pf {
-	int	filtering_in_kernel; /* using kernel filter */
-	u_long	TotPkts;	/* can't oflow for 79 hrs on ether */
-	u_long	TotAccepted;	/* count accepted by filter */
-	u_long	TotDrops;	/* count of dropped packets */
-	long	TotMissed;	/* missed by i/f during this run */
-	long	OrigMissed;	/* missed by i/f before this run */
-};
-
 static int pcap_setfilter_pf(pcap_t *, struct bpf_program *);
 
 /*
@@ -100,14 +87,15 @@ static int pcap_setfilter_pf(pcap_t *, struct bpf_program *);
 static int
 pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 {
-	struct pcap_pf *pf = pc->priv;
 	register u_char *p, *bp;
 	register int cc, n, buflen, inc;
 	register struct enstamp *sp;
 #ifdef LBL_ALIGN
 	struct enstamp stamp;
 #endif
+#ifdef PCAP_FDDIPAD
 	register int pad;
+#endif
 
  again:
 	cc = pc->cc;
@@ -138,7 +126,9 @@ pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 	 * Loop through each packet.
 	 */
 	n = 0;
+#ifdef PCAP_FDDIPAD
 	pad = pc->fddipad;
+#endif
 	while (cc > 0) {
 		/*
 		 * Has "pcap_breakloop()" been called?
@@ -187,34 +177,42 @@ pcap_read_pf(pcap_t *pc, int cnt, pcap_handler callback, u_char *user)
 		inc = ENALIGN(buflen + sp->ens_stamplen);
 		cc -= inc;
 		bp += inc;
-		pf->TotPkts++;
-		pf->TotDrops += sp->ens_dropped;
-		pf->TotMissed = sp->ens_ifoverflows;
-		if (pf->OrigMissed < 0)
-			pf->OrigMissed = pf->TotMissed;
+		pc->md.TotPkts++;
+		pc->md.TotDrops += sp->ens_dropped;
+		pc->md.TotMissed = sp->ens_ifoverflows;
+		if (pc->md.OrigMissed < 0)
+			pc->md.OrigMissed = pc->md.TotMissed;
 
 		/*
 		 * Short-circuit evaluation: if using BPF filter
 		 * in kernel, no need to do it now - we already know
 		 * the packet passed the filter.
 		 *
+#ifdef PCAP_FDDIPAD
 		 * Note: the filter code was generated assuming
 		 * that pc->fddipad was the amount of padding
 		 * before the header, as that's what's required
 		 * in the kernel, so we run the filter before
 		 * skipping that padding.
+#endif
 		 */
-		if (pf->filtering_in_kernel ||
+		if (pc->md.use_bpf ||
 		    bpf_filter(pc->fcode.bf_insns, p, sp->ens_count, buflen)) {
 			struct pcap_pkthdr h;
-			pf->TotAccepted++;
+			pc->md.TotAccepted++;
 			h.ts = sp->ens_tstamp;
+#ifdef PCAP_FDDIPAD
 			h.len = sp->ens_count - pad;
+#else
+			h.len = sp->ens_count;
+#endif
+#ifdef PCAP_FDDIPAD
 			p += pad;
 			buflen -= pad;
+#endif
 			h.caplen = buflen;
 			(*callback)(user, &h, p);
-			if (++n >= cnt && !PACKET_COUNT_IS_UNLIMITED(cnt)) {
+			if (++n >= cnt && cnt > 0) {
 				pc->cc = cc;
 				pc->bp = bp;
 				return (n);
@@ -237,12 +235,11 @@ pcap_inject_pf(pcap_t *p, const void *buf, size_t size)
 		return (-1);
 	}
 	return (ret);
-}
+}                           
 
 static int
 pcap_stats_pf(pcap_t *p, struct pcap_stat *ps)
 {
-	struct pcap_pf *pf = p->priv;
 
 	/*
 	 * If packet filtering is being done in the kernel:
@@ -280,9 +277,9 @@ pcap_stats_pf(pcap_t *p, struct pcap_stat *ps)
 	 * the kernel by libpcap, but they may include packets not
 	 * yet read from libpcap by the application.
 	 */
-	ps->ps_recv = pf->TotAccepted;
-	ps->ps_drop = pf->TotDrops;
-	ps->ps_ifdrop = pf->TotMissed - pf->OrigMissed;
+	ps->ps_recv = p->md.TotAccepted;
+	ps->ps_drop = p->md.TotDrops;
+	ps->ps_ifdrop = p->md.TotMissed - p->md.OrigMissed;
 	return (0);
 }
 
@@ -297,7 +294,6 @@ pcap_stats_pf(pcap_t *p, struct pcap_stat *ps)
 static int
 pcap_activate_pf(pcap_t *p)
 {
-	struct pcap_pf *pf = p->priv;
 	short enmode;
 	int backlog = -1;	/* request the most */
 	struct enfilter Filter;
@@ -331,10 +327,8 @@ your system may not be properly configured; see the packetfilter(4) man page\n",
 			p->opt.source, pcap_strerror(errno));
 		goto bad;
 	}
-	pf->OrigMissed = -1;
-	enmode = ENTSTAMP|ENNONEXCL;
-	if (!p->opt.immediate)
-		enmode |= ENBATCH;
+	p->md.OrigMissed = -1;
+	enmode = ENTSTAMP|ENBATCH|ENNONEXCL;
 	if (p->opt.promisc)
 		enmode |= ENPROMISC;
 	if (ioctl(p->fd, EIOCMBIS, (caddr_t)&enmode) < 0) {
@@ -442,6 +436,7 @@ your system may not be properly configured; see the packetfilter(4) man page\n",
 		goto bad;
 	}
 	/* set truncation */
+#ifdef PCAP_FDDIPAD
 	if (p->linktype == DLT_FDDI) {
 		p->fddipad = PCAP_FDDIPAD;
 
@@ -449,6 +444,7 @@ your system may not be properly configured; see the packetfilter(4) man page\n",
 		p->snapshot += PCAP_FDDIPAD;
 	} else
 		p->fddipad = 0;
+#endif
 	if (ioctl(p->fd, EIOCTRUNCATE, (caddr_t)&p->snapshot) < 0) {
 		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "EIOCTRUNCATE: %s",
 		    pcap_strerror(errno));
@@ -464,10 +460,10 @@ your system may not be properly configured; see the packetfilter(4) man page\n",
 		goto bad;
 	}
 
-	if (p->opt.timeout != 0) {
+	if (p->md.timeout != 0) {
 		struct timeval timeout;
-		timeout.tv_sec = p->opt.timeout / 1000;
-		timeout.tv_usec = (p->opt.timeout * 1000) % 1000000;
+		timeout.tv_sec = p->md.timeout / 1000;
+		timeout.tv_usec = (p->md.timeout * 1000) % 1000000;
 		if (ioctl(p->fd, EIOCSRTIMEOUT, (caddr_t)&timeout) < 0) {
 			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "EIOCSRTIMEOUT: %s",
 				pcap_strerror(errno));
@@ -503,11 +499,11 @@ your system may not be properly configured; see the packetfilter(4) man page\n",
 }
 
 pcap_t *
-pcap_create_interface(const char *device, char *ebuf)
+pcap_create(const char *device, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(device, ebuf, sizeof (struct pcap_pf));
+	p = pcap_create_common(device, ebuf);
 	if (p == NULL)
 		return (NULL);
 
@@ -524,7 +520,6 @@ pcap_platform_finddevs(pcap_if_t **alldevsp, char *errbuf)
 static int
 pcap_setfilter_pf(pcap_t *p, struct bpf_program *fp)
 {
-	struct pcap_pf *pf = p->priv;
 	struct bpf_version bv;
 
 	/*
@@ -566,7 +561,7 @@ pcap_setfilter_pf(pcap_t *p, struct bpf_program *fp)
 			 * a window to annoy the user.
 			 */
 			fprintf(stderr, "tcpdump: Using kernel BPF filter\n");
-			pf->filtering_in_kernel = 1;
+			p->md.use_bpf = 1;
 
 			/*
 			 * Discard any previously-received packets,
@@ -604,6 +599,6 @@ pcap_setfilter_pf(pcap_t *p, struct bpf_program *fp)
 	 * a warning of some sort.
 	 */
 	fprintf(stderr, "tcpdump: Filtering in user process\n");
-	pf->filtering_in_kernel = 0;
+	p->md.use_bpf = 0;
 	return (0);
 }

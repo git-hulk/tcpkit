@@ -23,6 +23,11 @@
  * This module now handles the STREAMS based NIT.
  */
 
+#ifndef lint
+static const char rcsid[] _U_ =
+    "@(#) $Header: /tcpdump/master/libpcap/pcap-snit.c,v 1.77 2008-04-14 20:40:58 guy Exp $ (LBL)";
+#endif
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -79,17 +84,9 @@
 /* Forwards */
 static int nit_setflags(int, int, int, char *);
 
-/*
- * Private data for capturing on STREAMS NIT devices.
- */
-struct pcap_snit {
-	struct pcap_stat stat;
-};
-
 static int
 pcap_stats_snit(pcap_t *p, struct pcap_stat *ps)
 {
-	struct pcap_snit *psn = p->priv;
 
 	/*
 	 * "ps_recv" counts packets handed to the filter, not packets
@@ -108,14 +105,13 @@ pcap_stats_snit(pcap_t *p, struct pcap_stat *ps)
 	 * kernel by libpcap or packets not yet read from libpcap by the
 	 * application.
 	 */
-	*ps = psn->stat;
+	*ps = p->md.stat;
 	return (0);
 }
 
 static int
 pcap_read_snit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 {
-	struct pcap_snit *psn = p->priv;
 	register int cc, n;
 	register u_char *bp, *cp, *ep;
 	register struct nit_bufhdr *hdrp;
@@ -164,7 +160,7 @@ pcap_read_snit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 			}
 		}
 
-		++psn->stat.ps_recv;
+		++p->md.stat.ps_recv;
 		cp = bp;
 
 		/* get past NIT buffer  */
@@ -176,7 +172,7 @@ pcap_read_snit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 		cp += sizeof(*ntp);
 
 		ndp = (struct nit_ifdrops *)cp;
-		psn->stat.ps_drop = ndp->nh_drops;
+		p->md.stat.ps_drop = ndp->nh_drops;
 		cp += sizeof *ndp;
 
 		/* get past packet len  */
@@ -196,7 +192,7 @@ pcap_read_snit(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 			h.len = nlp->nh_pktlen;
 			h.caplen = caplen;
 			(*callback)(user, &h, cp);
-			if (++n >= cnt && !PACKET_COUNT_IS_UNLIMITED(cnt)) {
+			if (++n >= cnt && cnt > 0) {
 				p->cc = ep - bp;
 				p->bp = bp;
 				return (n);
@@ -211,7 +207,7 @@ static int
 pcap_inject_snit(pcap_t *p, const void *buf, size_t size)
 {
 	struct strbuf ctl, data;
-
+	
 	/*
 	 * XXX - can we just do
 	 *
@@ -231,48 +227,33 @@ pcap_inject_snit(pcap_t *p, const void *buf, size_t size)
 }
 
 static int
-nit_setflags(pcap_t *p)
+nit_setflags(int fd, int promisc, int to_ms, char *ebuf)
 {
 	bpf_u_int32 flags;
 	struct strioctl si;
-	u_int zero = 0;
 	struct timeval timeout;
 
-	if (p->opt.immediate) {
-		/*
-		 * Set the chunk size to zero, so that chunks get sent
-		 * up immediately.
-		 */
-		si.ic_cmd = NIOCSCHUNK;
-		si.ic_len = sizeof(zero);
-		si.ic_dp = (char *)&zero;
-		if (ioctl(p->fd, I_STR, (char *)&si) < 0) {
-			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "NIOCSCHUNK: %s",
-			    pcap_strerror(errno));
-			return (-1);
-		}
-	}
 	si.ic_timout = INFTIM;
-	if (p->opt.timeout != 0) {
-		timeout.tv_sec = p->opt.timeout / 1000;
-		timeout.tv_usec = (p->opt.timeout * 1000) % 1000000;
+	if (to_ms != 0) {
+		timeout.tv_sec = to_ms / 1000;
+		timeout.tv_usec = (to_ms * 1000) % 1000000;
 		si.ic_cmd = NIOCSTIME;
 		si.ic_len = sizeof(timeout);
 		si.ic_dp = (char *)&timeout;
-		if (ioctl(p->fd, I_STR, (char *)&si) < 0) {
-			snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "NIOCSTIME: %s",
+		if (ioctl(fd, I_STR, (char *)&si) < 0) {
+			snprintf(ebuf, PCAP_ERRBUF_SIZE, "NIOCSTIME: %s",
 			    pcap_strerror(errno));
 			return (-1);
 		}
 	}
 	flags = NI_TIMESTAMP | NI_LEN | NI_DROPS;
-	if (p->opt.promisc)
+	if (promisc)
 		flags |= NI_PROMISC;
 	si.ic_cmd = NIOCSFLAGS;
 	si.ic_len = sizeof(flags);
 	si.ic_dp = (char *)&flags;
-	if (ioctl(p->fd, I_STR, (char *)&si) < 0) {
-		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "NIOCSFLAGS: %s",
+	if (ioctl(fd, I_STR, (char *)&si) < 0) {
+		snprintf(ebuf, PCAP_ERRBUF_SIZE, "NIOCSFLAGS: %s",
 		    pcap_strerror(errno));
 		return (-1);
 	}
@@ -368,7 +349,7 @@ pcap_activate_snit(pcap_t *p)
 		    pcap_strerror(errno));
 		goto bad;
 	}
-	if (nit_setflags(p) < 0)
+	if (nit_setflags(p->fd, p->opt.promisc, p->md.timeout, p->errbuf) < 0)
 		goto bad;
 
 	(void)ioctl(fd, I_FLUSH, (char *)FLUSHR);
@@ -426,11 +407,11 @@ pcap_activate_snit(pcap_t *p)
 }
 
 pcap_t *
-pcap_create_interface(const char *device, char *ebuf)
+pcap_create(const char *device, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(device, ebuf, sizeof (struct pcap_snit));
+	p = pcap_create_common(device, ebuf);
 	if (p == NULL)
 		return (NULL);
 
