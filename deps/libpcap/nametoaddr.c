@@ -98,7 +98,6 @@ static inline int xdtoi(int);
 bpf_u_int32 **
 pcap_nametoaddr(const char *name)
 {
-#if 0
 #ifndef h_addr
 	static bpf_u_int32 *hlist[2];
 #endif
@@ -118,16 +117,12 @@ pcap_nametoaddr(const char *name)
 	}
 	else
 		return 0;
-#else
-	return 0;
-#endif
 }
 
 #ifdef INET6
 struct addrinfo *
 pcap_nametoaddrinfo(const char *name)
 {
-#if 0
 	struct addrinfo hints, *res;
 	int error;
 
@@ -140,9 +135,6 @@ pcap_nametoaddrinfo(const char *name)
 		return NULL;
 	else
 		return res;
-#else
-	return NULL;
-#endif
 }
 #endif /*INET6*/
 
@@ -153,7 +145,6 @@ pcap_nametoaddrinfo(const char *name)
 bpf_u_int32
 pcap_nametonetaddr(const char *name)
 {
-#if 0
 #ifndef WIN32
 	struct netent *np;
 
@@ -167,9 +158,6 @@ pcap_nametonetaddr(const char *name)
 	 */
 	return 0;
 #endif
-#else
-	return 0;
-#endif
 }
 
 /*
@@ -180,7 +168,6 @@ pcap_nametonetaddr(const char *name)
 int
 pcap_nametoport(const char *name, int *port, int *proto)
 {
-#if 0
 	struct servent *sp;
 	int tcp_port = -1;
 	int udp_port = -1;
@@ -225,9 +212,6 @@ pcap_nametoport(const char *name, int *port, int *proto)
 	}
 #endif
 	return 0;
-#else
-	return 0;
-#endif
 }
 
 /*
@@ -278,7 +262,6 @@ pcap_nametoportrange(const char *name, int *port1, int *port2, int *proto)
 int
 pcap_nametoproto(const char *str)
 {
-#if 0
 	struct protoent *p;
 
 	p = getprotobyname(str);
@@ -286,9 +269,6 @@ pcap_nametoproto(const char *str)
 		return p->p_proto;
 	else
 		return PROTO_UNDEF;
-#else
-	return PROTO_UNDEF;
-#endif
 }
 
 #include "ethertype.h"
