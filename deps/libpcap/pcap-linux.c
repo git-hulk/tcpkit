@@ -1883,7 +1883,7 @@ scan_sys_class_net(pcap_if_t **devlistp, char *errbuf)
 		 */
 		strncpy(ifrflags.ifr_name, name, sizeof(ifrflags.ifr_name));
 		if (ioctl(fd, SIOCGIFFLAGS, (char *)&ifrflags) < 0) {
-			if ((errno == ENXIO) || (errno == ENODEV))
+			if (errno == ENXIO)
 				continue;
 			(void)snprintf(errbuf, PCAP_ERRBUF_SIZE,
 			    "SIOCGIFFLAGS: %.*s: %s",
@@ -3283,11 +3283,11 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 	int timeout;
 	int pkts = 0;
 	char c;
-    int ret;
 
 	/* wait for frames availability.*/
 	if (!pcap_get_ring_frame(handle, TP_STATUS_USER)) {
 		struct pollfd pollinfo;
+		int ret;
 
 		pollinfo.fd = handle->fd;
 		pollinfo.events = POLLIN;
@@ -3364,9 +3364,6 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 			}
 		} while (ret < 0);
 	}
-    if (ret == 0) {
-        return -10;
-    }
 
 	/* non-positive values of max_packets are used to require all 
 	 * packets currently available in the ring */

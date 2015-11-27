@@ -345,12 +345,16 @@ ${B}			{ yylval.e = pcap_ether_aton(((char *)yytext)+1);
 			  memset(&hints, 0, sizeof(hints));
 			  hints.ai_family = AF_INET6;
 			  hints.ai_flags = AI_NUMERICHOST;
+#if 0
 			  if (getaddrinfo(yytext, NULL, &hints, &res))
 				bpf_error("bogus IPv6 address %s", yytext);
 			  else {
+#endif
 				freeaddrinfo(res);
 				yylval.s = sdup((char *)yytext); return HID6;
+#if 0
 			  }
+#endif
 #else
 			  bpf_error("IPv6 address %s not supported", yytext);
 #endif /*INET6*/
