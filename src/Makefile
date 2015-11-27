@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -Wall
 CINCLUDES = -I../deps/libpcap/ -I../deps/lua/src
 CLIBS = ../deps/libpcap/libpcap.a ../deps/lua/src/liblua.a
-LOAD_LIBS=-lm -ldl
+LOAD_LIBS=-lm -ldl -lnl
 
 INSTALL=/usr/bin/install
 INSTALLDIR=/usr/local
