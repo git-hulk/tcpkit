@@ -116,7 +116,7 @@ process_ip_packet(const struct ip *ip, struct timeval tv)
         datalen = len - sizeof(struct ip) - tcp->doff * 4;
 #endif
         // ignore tcp flow packet
-        if(datalen == 0) break;
+        //if(datalen == 0) break;
         
 
         // lua process handler

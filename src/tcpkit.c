@@ -37,7 +37,7 @@ usage(char *prog)
     fprintf(stderr, "\t-s server ip.\n");
     fprintf(stderr, "\t-p port.\n");
     fprintf(stderr, "\t-i device.\n");
-    fprintf(stderr, "\t-S lua script path, detail in example.lua.\n");
+    fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua.\n");
     fprintf(stderr, "\t-l local address.\n");
     fprintf(stderr, "\t-f log file.\n");
     fprintf(stderr, "\t-v version.\n");
@@ -80,7 +80,7 @@ main(int argc, char **argv)
     }
 
     if(!opts.script) {
-        opts.script = "example.lua";
+        opts.script = "../scripts/example.lua";
     }
     if(access(opts.script, R_OK) == -1) {
         logger(ERROR, "load lua script %s failed, as %s\n", opts.script, strerror(errno));

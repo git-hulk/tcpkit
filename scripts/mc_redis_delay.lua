@@ -2,9 +2,12 @@ local cjson = require "cjson"
 
 -- Set config
 local mc_redis_delay_config = {
-    server = "1.1.1.1",
-    port = 11211,
-    device = "eth0" 
+    -- server ip
+    server = "192.168.1.1",
+    -- server port
+    port = 3306,
+    -- device
+    device = "en5" 
 }
 
 set_config(mc_redis_delay_config )
@@ -14,6 +17,10 @@ function process_packet(ip)
     -- ip is a json string.
     local ip_obj = cjson.decode(ip)
     local key
+
+    if ip_obj.len == 0 then
+        return
+    end
 
     if ip_obj.direct == 1 then
         -- incoming packet
