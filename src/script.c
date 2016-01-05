@@ -12,7 +12,8 @@ lua_loadlib(lua_State *L, const char *libname, lua_CFunction luafunc) {
     lua_call(L, 1, 0);
 }
 
-static int set_config(lua_State* L)
+static int
+set_config(lua_State* L)
 {
     struct tk_options *opts;
     opts = get_global_options();

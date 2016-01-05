@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define NULL_HDRLEN 4
+
 void
 process_packet(unsigned char *user, const struct pcap_pkthdr *header,
                 const unsigned char *packet)
@@ -20,6 +22,10 @@ process_packet(unsigned char *user, const struct pcap_pkthdr *header,
 
     switch (pcap_datalink(pw->pcap)) {
     
+    case DLT_NULL:
+        /* BSD loopback */
+        ip = (struct ip *)(packet + NULL_HDRLEN);
+        break;
     case DLT_LINUX_SLL:
         sll = (struct sll_header *) packet;
         packet_type = ntohs(sll->sll_protocol);
@@ -118,7 +124,6 @@ process_ip_packet(const struct ip *ip, struct timeval tv)
         // ignore tcp flow packet
         //if(datalen == 0) break;
         
-
         // lua process handler
         lua_State *L = get_lua_vm();
         if (!L) {
