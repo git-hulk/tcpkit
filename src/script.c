@@ -12,6 +12,30 @@ lua_loadlib(lua_State *L, const char *libname, lua_CFunction luafunc) {
     lua_call(L, 1, 0);
 }
 
+void
+script_pushtableinteger(lua_State* L , char* key , long value)
+{
+    lua_pushstring(L, key);
+    lua_pushinteger(L, value);
+    lua_settable(L, -3);
+}
+
+void
+script_pushtablestring(lua_State* L , char* key , char* value)
+{
+    lua_pushstring(L, key);
+    lua_pushstring(L, value);
+    lua_settable(L, -3);
+}
+
+void
+script_pushtablelstring(lua_State* L , char* key , char* value, int len)
+{
+    lua_pushstring(L, key);
+    lua_pushlstring(L, value, len);
+    lua_settable(L, -3);
+}
+
 static int
 set_config(lua_State* L)
 {

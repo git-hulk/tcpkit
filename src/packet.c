@@ -1,6 +1,5 @@
 #include "packet.h"
 #include "tcpkit.h"
-#include "cJSON.h"
 #include "util.h"
 #include "local_addresses.h"
 #include <stdlib.h>
@@ -55,13 +54,12 @@ process_packet(unsigned char *user, const struct pcap_pkthdr *header,
 }
 
 
-char *
-ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
+void
+push_params(const struct ip *ip, unsigned dlen,  struct timeval tv)
 {
     int tcp_hdr_size, direct = 0;
     struct tcphdr *tcp;
     uint16_t sport, dport;
-    char *json_str;
 
     tcp = (struct tcphdr *) ((unsigned char *) ip + sizeof(struct ip));
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
@@ -78,30 +76,24 @@ ip_to_json(const struct ip *ip, unsigned dlen,  struct timeval tv)
             direct = 1;
         }
 
-        cJSON *cjson = cJSON_CreateObject();
-
-        // ms
-        cJSON_AddNumberToObject(cjson, "timestamp", tv.tv_sec * 1000000 + tv.tv_usec);
-        cJSON_AddNumberToObject(cjson, "direct" ,direct);
-        cJSON_AddNumberToObject(cjson, "len" , dlen);
-        //addr = inet_ntoa(ip->ip_src);
-        cJSON_AddLStringToObject(cjson, "src", inet_ntoa(ip->ip_src), 15);
-        //addr = inet_ntoa(ip->ip_dst);
-        cJSON_AddLStringToObject(cjson, "dst", inet_ntoa(ip->ip_dst), 15);
-        cJSON_AddNumberToObject(cjson, "sport" ,sport);
-        cJSON_AddNumberToObject(cjson, "dport" ,dport);
-        cJSON_AddNumberToObject(cjson, "is_client" , is_client_mode());
+        lua_State *L = get_lua_vm();
+        
+        lua_newtable(L);
+        script_pushtableinteger(L, "tv_sec",  tv.tv_sec);
+        script_pushtableinteger(L, "tv_usec", tv.tv_usec);
+        script_pushtableinteger(L, "direct", direct);
+        script_pushtableinteger(L, "len" , dlen);
+        script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
+        script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
+        script_pushtableinteger(L, "sport", sport);
+        script_pushtableinteger(L, "dport", dport);
+        script_pushtableinteger(L, "is_client", is_client_mode());
         if (dlen > 0) {
             // -----------+-----------+----------+-----....-----+
             // | ETHER    |  IP       | TCP      | payload      |
             // -----------+-----------+----------+--------------+
-            cJSON_AddLStringToObject(cjson, "payload", (char *)tcp + tcp_hdr_size, dlen);
+            script_pushtablelstring(L, "payload", (char *)tcp + tcp_hdr_size, dlen);
         }
-
-        json_str = cJSON_Print(cjson);
-        cJSON_Delete(cjson);
-
-        return json_str; 
 }
 
 int
@@ -110,7 +102,6 @@ process_ip_packet(const struct ip *ip, struct timeval tv)
     switch (ip->ip_p) {
         struct tcphdr *tcp;
         unsigned len, datalen; 
-        char *json_str;
 
     case IPPROTO_TCP:
         
@@ -127,17 +118,16 @@ process_ip_packet(const struct ip *ip, struct timeval tv)
         // lua process handler
         lua_State *L = get_lua_vm();
         if (!L) {
-            logger(ERROR, "Lua vm isn't initialed.");
-            exit(1);
+            logger(ERROR, "Lua vm didn't initialed.");
         }
 
         lua_getglobal(L, DEFAULT_CALLBACK);
-        json_str = ip_to_json(ip, datalen, tv);    
-        lua_pushstring(L, json_str);
-        lua_pcall(L, 1, 1, 0);
+        push_params(ip, datalen, tv);    
+        if (lua_pcall(L, 1, 1, 0) != 0) {
+            logger(ERROR, "Runing handle function failed: %s", lua_tostring(L, -1));
+        }
         lua_tonumber(L, -1);
         lua_pop(L,-1);
-        free(json_str);
 
         break;
     default: return 0;
