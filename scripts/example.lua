@@ -6,7 +6,13 @@ local example_config = {
 }
 
 set_config(example_config)
-function process_packet(packet)
-    --local obj = cjson:decode(packet)
-    print(packet)
+function process_packet(item)
+    -- item.tv_sec 
+    -- time.tv_usec
+    -- item.src
+    -- item.sport
+    -- item.dst
+    -- item.dport
+    -- item.payload
+    print("---- packet ----")
 end
