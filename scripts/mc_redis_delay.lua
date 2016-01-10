@@ -13,9 +13,9 @@ local mc_redis_delay_config = {
 set_config(mc_redis_delay_config )
 
 local delay_hash = {}
-function process_packet(ip)
+function process_packet(item)
     -- ip is a json string.
-    local ip_obj = cjson.decode(ip)
+    local ip_obj = item 
     local key
 
     if ip_obj.len == 0 then
@@ -27,22 +27,22 @@ function process_packet(ip)
         if ip_obj.is_client == 1 then
             key = ip_obj.src .. "-" .. ip_obj.sport .. "-" .. ip_obj.dst .. "-" .. ip_obj.dport
             if delay_hash[key] then
-                print("Client query data cost " .. (ip_obj.timestamp - delay_hash[key]) .. "us")
+                print("Client query data cost " .. (ip_obj.tv_sec - delay_hash[key]) .. "us")
             end
         else
             key = ip_obj.dst .. "-" .. ip_obj.dport .. "-" .. ip_obj.src .. "-" .. ip_obj.sport
             -- unit ms
-            delay_hash[key] = ip_obj.timestamp
+            delay_hash[key] = ip_obj.tv_sec
         end
     else 
         -- outgoing packet
         if ip_obj.is_client == 1 then
             key = ip_obj.dst .. "-" .. ip_obj.dport .. "-" .. ip_obj.src .. "-" .. ip_obj.sport
-            delay_hash[key] = ip_obj.timestamp
+            delay_hash[key] = ip_obj.tv_sec
         else
             key = ip_obj.src.. "-" .. ip_obj.sport .. "-" .. ip_obj.dst .. "-" .. ip_obj.dport
             if delay_hash[key] then
-                print("Server handle packet cost " .. (ip_obj.timestamp - delay_hash[key]) .. "us")
+                print("Server handle packet cost " .. (ip_obj.tv_sec - delay_hash[key]) .. "us")
             end
         end
     end
