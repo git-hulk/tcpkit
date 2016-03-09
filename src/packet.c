@@ -88,6 +88,7 @@ push_params(const struct ip *ip, unsigned dlen,  struct timeval tv)
         script_pushtableinteger(L, "sport", sport);
         script_pushtableinteger(L, "dport", dport);
         script_pushtableinteger(L, "is_client", is_client_mode());
+
         if (dlen > 0) {
             // -----------+-----------+----------+-----....-----+
             // | ETHER    |  IP       | TCP      | payload      |
@@ -124,7 +125,7 @@ process_ip_packet(const struct ip *ip, struct timeval tv)
         lua_getglobal(L, DEFAULT_CALLBACK);
         push_params(ip, datalen, tv);    
         if (lua_pcall(L, 1, 1, 0) != 0) {
-            logger(ERROR, "Runing handle function failed: %s", lua_tostring(L, -1));
+            logger(ERROR, "%s", lua_tostring(L, -1));
         }
         lua_tonumber(L, -1);
         lua_pop(L,-1);

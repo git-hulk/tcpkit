@@ -85,7 +85,9 @@ script_init(const char *filename)
 
     lua_register(L, "set_config", set_config);
     lua_loadlib(L, "cjson", luaopen_cjson);
-    luaL_dofile(L, filename);
+    if(luaL_dofile(L, filename)) {
+         logger(ERROR,"%s", lua_tostring(L, -1));
+    }
 
     return L;
 }
