@@ -5,6 +5,9 @@ local packet_hash_usec = {}
 local packet_hash_cmd = {}
 
 function parse_data(str)
+    if str == nil then
+        return ""
+    end
     if string.byte(str, 1) ~= 42 then
         return string.sub(str, 1, string.len(str) - 1)
     end
@@ -26,11 +29,10 @@ function handle_incoming(item)
         if packet_hash_cmd[key] then
             local cost = (item.tv_sec - packet_hash_sec[key]) * 1000
             cost = cost +  (item.tv_usec - packet_hash_usec[key]) / 1000
-            local cmd = parse_data(packet_hash_cmd[key]) 
-            if string.len(cmd) > 20 then
-                print(string.format("%36s | %1.20s... | %3.3fms", key, parse_data(packet_hash_cmd[key]), cost))
+            if string.len(packet_hash_cmd[key]) > 20 then
+                print(string.format("%36s | %1.20s... | %3.3fms", key, packet_hash_cmd[key], cost))
             else
-                print(string.format("%36s | %-23s | %3.3fms", key, parse_data(packet_hash_cmd[key]), cost))
+                print(string.format("%36s | %-23s | %3.3fms", key, packet_hash_cmd[key], cost))
             end
             packet_hash_sec[key] = nil 
             packet_hash_usec[key] = nil 
@@ -55,11 +57,10 @@ function handle_outgoing(item)
         if packet_hash_cmd[key] then
             local cost = (item.tv_sec - packet_hash_sec[key]) * 1000
             cost = cost +  (item.tv_usec - packet_hash_usec[key]) / 1000
-            local cmd = parse_data(packet_hash_cmd[key]) 
-            if string.len(cmd) > 20 then
-                print(string.format("%36s\t%1.20s...\t%3.3fms", key, parse_data(packet_hash_cmd[key]), cost))
+            if string.len(packet_hash_cmd[key]) > 20 then
+                print(string.format("%36s\t%1.20s...\t%3.3fms", key, packet_hash_cmd[key], cost))
             else
-                print(string.format("%36s\t%-23s\t%3.3fms", key, parse_data(packet_hash_cmd[key]), cost))
+                print(string.format("%36s\t%-23s\t%3.3fms", key, packet_hash_cmd[key], cost))
             end
             packet_hash_sec[key] = nil 
             packet_hash_usec[key] = nil 
