@@ -6,7 +6,7 @@ local packet_hash_cmd = {}
 
 function parse_request(str)
     if string.byte(str, 1) ~= 42 then
-        return string.sub(str, 1, string.len(str) - 1)
+        return string.gsub(str, "[\r\n]", " ")
     end
 
     local result = ""
