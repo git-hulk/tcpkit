@@ -22,14 +22,18 @@ $ cd tcpkit/src
 $ make
 ```
 
+### how to acquire device
+
+use `ifconfig`
+
 ### capture packet
 
 ```
-./tcpkit -S ../scripts/example.lua -p 5555 -i en5 -s 192.168.1.2
+sudo ./tcpkit -S ../scripts/example.lua -p 5555 -i en5 -s 192.168.1.2
 ```
 
 ### Monitor redis or memcached cost time 
 
 ```
-./tcpkit -S ../scripts/redis_mc_monitor.lua -p 6379 -i en5 -s 192.168.1.2
+sudo ./tcpkit -S ../scripts/redis_mc_monitor.lua -p 6379 -i en5 -s 192.168.1.2
 ```
