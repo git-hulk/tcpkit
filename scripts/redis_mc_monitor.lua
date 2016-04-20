@@ -6,7 +6,7 @@ local packet_hash_cmd = {}
 
 function parse_request(str)
     if string.byte(str, 1) ~= 42 then
-        return string.sub(str, 1, string.len(str) - 1)
+        return string.gsub(str, "[\r\n]", " ")
     end
 
     local result = ""
@@ -22,12 +22,13 @@ end
 
 function calculate_request_cost(key, item)
     if packet_hash_cmd[key] then
+        local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..item.tv_usec
         local cost = (item.tv_sec - packet_hash_sec[key]) * 1000
         cost = cost +  (item.tv_usec - packet_hash_usec[key]) / 1000
         if string.len(packet_hash_cmd[key]) > 20 then
-            print(string.format("%36s | %1.20s... | %3.3fms", key, packet_hash_cmd[key], cost))
+            print(string.format("%s | %36s | %1.20s... | %3.3fms", time_str, key, packet_hash_cmd[key], cost))
         else
-            print(string.format("%36s | %-23s | %3.3fms", key, packet_hash_cmd[key], cost))
+            print(string.format("%s | %36s | %-23s | %3.3fms", time_str, key, packet_hash_cmd[key], cost))
         end
         packet_hash_sec[key] = nil 
         packet_hash_usec[key] = nil 
