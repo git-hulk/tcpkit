@@ -6,5 +6,7 @@ function process_packet(item)
     -- item.dst
     -- item.dport
     -- item.payload
-    print(item.payload)
+    if item.len > 0 then
+        print(item.payload)
+    end
 end
