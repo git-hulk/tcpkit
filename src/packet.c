@@ -68,6 +68,7 @@ static void packet_callback(const struct ip *ip, const struct timeval *tv) {
     if (lua_pcall(L, 1, 1, 0) != 0) {
         logger(ERROR, "%s", lua_tostring(L, -1));
     }
+    script_need_gc(L); // check whether need gc.
     lua_tonumber(L, -1);
     lua_pop(L,-1);
 }

@@ -112,3 +112,16 @@ script_check_func_exists(lua_State * L, const char *func_name) {
 
     return ret;
 }
+
+void
+script_need_gc(lua_State* L)
+{
+#define LUA_GC_CYCLE_PERIOD 500
+    static long gc_count = 0; 
+
+    gc_count++;
+    if (gc_count == LUA_GC_CYCLE_PERIOD) {
+        lua_gc(L, LUA_GCSTEP, LUA_GC_CYCLE_PERIOD);
+        gc_count = 0; 
+    }  
+}
