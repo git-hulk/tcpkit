@@ -3,6 +3,7 @@
 
 #define LUA_COMPAT_MODULE
 
+#include <stdint.h>
 #include "packet_capture.h"
 #include "script.h"
 #include "util.h"
@@ -17,9 +18,21 @@ struct tk_options {
     char *log_file;
     int port;
     int specified_addresses; 
+    int is_calc_mode;
+    int duration;
+};
+
+struct bandwidth {
+    uint64_t in_bytes;
+    uint64_t in_packets;
+    uint64_t out_bytes;
+    uint64_t out_packets;
+    uint64_t last_calc_time;
 };
 
 lua_State *get_lua_vm(); 
 struct tk_options *get_global_options();
+struct bandwidth *get_global_bandwidth();
+void need_report_bandwidth();
 int is_client_mode();
 #endif

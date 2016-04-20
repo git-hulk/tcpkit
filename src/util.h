@@ -25,6 +25,9 @@
 #define C_YELLOW "\033[33m"
 #define C_PURPLE "\033[35m"
 #define C_NONE "\033[0m"
+#define GB (1024*1024*1024)
+#define MB (1024*1024)
+#define KB (1024)
 
 enum LEVEL {
     DEBUG = 1,
@@ -36,4 +39,5 @@ enum LEVEL {
 void logger(enum LEVEL loglevel,char *fmt, ...);
 void set_log_file(char *filename);
 void set_log_level(enum LEVEL level);
+int speed_human(uint64_t speed, char *buf, int size);
 #endif

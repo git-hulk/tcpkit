@@ -97,9 +97,26 @@ push_params(const struct ip *ip, unsigned dlen,  struct timeval tv)
         }
 }
 
+void calc_bandwidth(const struct ip *ip, struct timeval *tv) { 
+
+    struct bandwidth *bw;
+    bw = get_global_bandwidth();
+    need_report_bandwidth();
+    if (is_local_address(ip->ip_dst)) {
+        // incoming
+        bw->in_bytes += htons(ip->ip_len);        
+        bw->in_packets += 1;
+    } else {
+        // outgoing
+        bw->out_bytes += htons(ip->ip_len);       
+        bw->out_packets += 1;
+    }
+}
+
 int
 process_ip_packet(const struct ip *ip, struct timeval tv)
 {
+    struct tk_options *opts;
     switch (ip->ip_p) {
         struct tcphdr *tcp;
         unsigned len, datalen; 
@@ -113,10 +130,12 @@ process_ip_packet(const struct ip *ip, struct timeval tv)
 #else
         datalen = len - sizeof(struct ip) - tcp->doff * 4;
 #endif
-        // ignore tcp flow packet
-        //if(datalen == 0) break;
-        
-        // lua process handler
+    
+        opts = get_global_options();
+        if (opts->is_calc_mode) {
+            calc_bandwidth(ip, &tv);
+            return 0;
+        }
         lua_State *L = get_lua_vm();
         if (!L) {
             logger(ERROR, "Lua vm didn't initialed.");

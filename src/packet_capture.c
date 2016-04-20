@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "packet_capture.h"
 #include "util.h"
+#include "tcpkit.h"
 
 pcap_wrapper* 
 pw_create(char *dev) 
@@ -51,13 +52,26 @@ pcap_set_filter (pcap_wrapper* pw, char *filter)
 
 int
 core_loop(pcap_wrapper *pw, char *filter, pcap_handler handler) {
+    int ret;
+    struct tk_options *opts;
+
     if(! pw) return -1;
 
     if(filter && pcap_set_filter(pw, filter) != 0) {
         // install filter failed.
         return -1;    
     }
-
+    
     logger(INFO, "start capturing, filter is = [%s]\n", filter);
-    return pcap_loop(pw->pcap, -1, handler, (unsigned char *) pw);
+    opts = get_global_options();
+    if (opts->is_calc_mode) {
+        // default calculate bandwidth every 30 second.
+        opts->duration = opts->duration >= 1 ? opts->duration : 30;
+        while((ret = pcap_dispatch(pw->pcap, -1, handler, (unsigned char *) pw)) >= 0) {
+            need_report_bandwidth();
+        }
+        return ret;
+    } else {
+        return pcap_loop(pw->pcap, -1, handler, (unsigned char *) pw); 
+    }
 }

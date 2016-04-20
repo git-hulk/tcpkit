@@ -76,3 +76,38 @@ logger(enum LEVEL loglevel,char *fmt, ...)
         exit(1);
     }
 }
+
+int speed_human(uint64_t speed, char *buf, int size)
+{
+    int n;
+
+    if (!buf || size < 16) return -1;
+    if (speed > GB) {
+        n = snprintf(buf, size, "%.2f GB/s", (speed * 1.0)/GB);
+    } else if (speed > MB) {
+        n = snprintf(buf, size, "%.2f MB/s", (speed * 1.0)/MB);
+    } else if (speed > KB) {
+        n = snprintf(buf, size, "%.2f KB/s", (speed * 1.0)/KB);
+    } else {
+        n = snprintf(buf, size, "%llu B/s", speed);
+    }
+    buf[n] = '\0';
+    return 0;
+}
+
+#ifdef TEST
+int main () {
+
+    char buf[16];
+
+    speed_human((uint64_t)512*1024*1024*1024, buf, 16);
+    printf("%s\n", buf);
+    speed_human((uint64_t)512*1023*1024, buf, 16);
+    printf("%s\n", buf);
+    speed_human((uint64_t)3033, buf, 16);
+    printf("%s\n", buf);
+    speed_human((uint64_t)123, buf, 16);
+    printf("%s\n", buf);
+    return 0;
+}
+#endif

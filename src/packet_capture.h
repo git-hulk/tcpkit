@@ -4,7 +4,7 @@
 #include <pcap.h>
 
 #define CAPTURE_LENGTH 65535
-#define READ_TIMEOUT 1000 // ms
+#define READ_TIMEOUT 100 // ms
 
 typedef struct {
     pcap_t *pcap;
@@ -16,5 +16,4 @@ pcap_wrapper* pw_create(char *dev);
 void pw_release (pcap_wrapper* pw);
 int pcap_set_filter (pcap_wrapper* pw, char *filter);
 int core_loop(pcap_wrapper *pw, char *filter, pcap_handler handler); 
-
 #endif
