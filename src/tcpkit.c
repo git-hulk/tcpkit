@@ -138,28 +138,18 @@ main(int argc, char **argv)
     if(!opts.specified_addresses && get_addresses() != 0) {
         exit(0);
     }
-    if(!opts.port) {
-        logger(ERROR, "port is required.\n");
-        exit(0);
-    }
-    if (!opts.device) {
-        logger(ERROR, "device is required.\n");
-        exit(0);
-    }
-    if(opts.log_file) {
-       set_log_file(opts.log_file); 
-    }
-    check_lua_script();
-    if (!(pw = pw_create(opts.device))) {
-        logger(ERROR, "start captrue packet failed.\n");
-        exit(0);
-    }
+    if (!opts.port) logger(ERROR, "port is required.\n");
+    if (!opts.device) logger(ERROR, "device is required.\n");
+    if (opts.log_file) set_log_file(opts.log_file); 
+    if (!(pw = pw_create(opts.device))) logger(ERROR, "start captrue packet failed.\n");
     if(opts.server) {
         snprintf(filter, sizeof(filter), "host %s and tcp port %d", opts.server, opts.port);
     } else {
         snprintf(filter, sizeof(filter), "tcp port %d", opts.port);
     }
 
+    check_lua_script();
+    // start capature loop.
     ret = core_loop(pw, filter, process_packet);
     if(ret == -1) logger(ERROR, "start core loop failed.\n");
 
