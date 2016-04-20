@@ -1,6 +1,6 @@
 #include <pcap.h>
 #include <stdlib.h>
-#include "packet_capture.h"
+#include "pcap_wrapper.h"
 #include "util.h"
 #include "tcpkit.h"
 

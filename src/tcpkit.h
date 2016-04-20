@@ -4,7 +4,7 @@
 #define LUA_COMPAT_MODULE
 
 #include <stdint.h>
-#include "packet_capture.h"
+#include "pcap_wrapper.h"
 #include "script.h"
 #include "util.h"
 

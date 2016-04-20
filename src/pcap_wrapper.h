@@ -1,8 +1,7 @@
-#ifndef _PACKET_CAPTURE_H_
-#define _PACKET_CAPTURE_H_
+#ifndef _PCAP_WRAPPER_H_
+#define _PCAP_WRAPPER_H_
 
 #include <pcap.h>
-
 #define CAPTURE_LENGTH 65535
 #define READ_TIMEOUT 100 // ms
 

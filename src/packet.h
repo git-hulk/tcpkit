@@ -10,6 +10,4 @@
 #include <net/ethernet.h>
 
 void process_packet(unsigned char *user, const struct pcap_pkthdr *header, const unsigned char *packet);
-int process_ip_packet(const struct ip *ip, struct timeval tv);
-int luaopen_ip();
 #endif
