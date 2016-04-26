@@ -20,6 +20,7 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
+#include <stdint.h>
 #define C_RED "\033[31m"
 #define C_GREEN "\033[32m"
 #define C_YELLOW "\033[33m"
