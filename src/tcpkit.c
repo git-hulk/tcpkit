@@ -139,9 +139,14 @@ main(int argc, char **argv)
         exit(0);
     }
     if (!opts.port) logger(ERROR, "port is required.\n");
-    if (!opts.device) logger(ERROR, "device is required.\n");
+    if (!opts.device) {
+        opts.device = strdup("any");
+    }
+
     if (opts.log_file) set_log_file(opts.log_file); 
-    if (!(pw = pw_create(opts.device))) logger(ERROR, "start captrue packet failed.\n");
+    if (!(pw = pw_create(opts.device))) {
+        logger(ERROR, "may be you should assign device use -i and swith to root.\n");
+    }
     if(opts.server) {
         snprintf(filter, sizeof(filter), "host %s and tcp port %d", opts.server, opts.port);
     } else {
