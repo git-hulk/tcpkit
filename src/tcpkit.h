@@ -16,6 +16,7 @@ struct tk_options {
     char *device;
     char *script;
     char *log_file;
+    char *offline_file;
     int port;
     int specified_addresses; 
     int is_calc_mode;

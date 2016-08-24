@@ -106,9 +106,10 @@ main(int argc, char **argv)
     pcap_wrapper *pw;
     char ch, filter[128], is_usage = 0, show_version = 0;
 
-    while((ch = getopt(argc, argv, "s:p:i:S:Cd:l:hv")) != -1) {
+    while((ch = getopt(argc, argv, "s:p:i:S:Cd:l:r:hv")) != -1) {
         switch(ch) {
             case 's': opts.server = strdup(optarg); break;
+            case 'r': opts.offline_file = strdup(optarg); break;
             case 'p': opts.port= atoi(optarg); break;
             case 'i': opts.device = strdup(optarg); break;
             case 'S': opts.script = strdup(optarg); break;
@@ -138,25 +139,33 @@ main(int argc, char **argv)
     if(!opts.specified_addresses && get_addresses() != 0) {
         exit(0);
     }
-    if (!opts.port) logger(ERROR, "port is required.\n");
+    if (!opts.port && !opts.offline_file) logger(ERROR, "port is required.\n");
     if (!opts.device) {
         opts.device = strdup("any");
     }
 
     if (opts.log_file) set_log_file(opts.log_file); 
-    if (!(pw = pw_create(opts.device))) {
-        logger(ERROR, "may be you should assign device use -i and swith to root.\n");
-    }
-    if(opts.server) {
-        snprintf(filter, sizeof(filter), "host %s and tcp port %d", opts.server, opts.port);
+
+    if (opts.offline_file) {
+        pw = pw_create_offline(opts.offline_file);
     } else {
-        snprintf(filter, sizeof(filter), "tcp port %d", opts.port);
+        pw = pw_create(opts.device);
+    }
+    if (!pw) {
+        logger(ERROR, "may be you should assign device use -i and swith to root.\n");
     }
 
     check_lua_script();
-    // start capature loop.
+
+    if(opts.server && opts.port) {
+        snprintf(filter, sizeof(filter), "host %s and tcp port %d", opts.server, opts.port);
+    } else if (opts.port) {
+        snprintf(filter, sizeof(filter), "tcp port %d", opts.port);
+    } else { // without filter
+        snprintf(filter, sizeof(filter), "");
+    }
     ret = core_loop(pw, filter, process_packet);
-    if(ret == -1) logger(ERROR, "start core loop failed.\n");
+    if(ret == -1) logger(ERROR, "start core loop failed, as %s.\n", pcap_geterr(pw->pcap));
 
     pw_release(pw);
     script_release(L);

@@ -12,6 +12,7 @@ typedef struct {
 } pcap_wrapper;
 
 pcap_wrapper* pw_create(char *dev);
+pcap_wrapper* pw_create_offline(const char *filename);
 void pw_release (pcap_wrapper* pw);
 int pcap_set_filter (pcap_wrapper* pw, char *filter);
 int core_loop(pcap_wrapper *pw, char *filter, pcap_handler handler); 

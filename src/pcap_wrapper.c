@@ -1,5 +1,7 @@
+#include <errno.h>
 #include <pcap.h>
 #include <stdlib.h>
+#include <string.h>
 #include "pcap_wrapper.h"
 #include "util.h"
 #include "tcpkit.h"
@@ -27,6 +29,32 @@ pw_create(char *dev)
     pw->net = net;
     pw->mask = mask;
     return pw; 
+}
+
+pcap_wrapper *
+pw_create_offline(const char *filename)
+{
+    FILE *fp;
+    pcap_t *pcap;
+    pcap_wrapper *pw;
+    char errbuf[PCAP_ERRBUF_SIZE];
+
+    if (!filename)  return NULL;
+
+    fp = fopen(filename, "r");
+    if (!fp) {
+        logger(ERROR, "open offline file %s error as %s\n", filename, strerror(errno));
+        return NULL;
+    }
+    pcap = pcap_fopen_offline(fp, errbuf);
+    if (!pcap) {
+        logger(ERROR, "pcap: %s\n", errbuf);
+        return NULL;
+    }
+
+    pw = malloc(sizeof(*pw));
+    pw->pcap = pcap;
+    return pw;
 }
 
 void
