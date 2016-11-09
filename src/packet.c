@@ -12,6 +12,7 @@ push_params(const struct ip *ip, unsigned dlen,  const struct timeval *tv)
     int tcp_hdr_size, direct = 0;
     struct tcphdr *tcp;
     uint16_t sport, dport;
+	struct tk_options *opts;
 
     tcp = (struct tcphdr *) ((unsigned char *) ip + sizeof(struct ip));
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
@@ -23,6 +24,21 @@ push_params(const struct ip *ip, unsigned dlen,  const struct timeval *tv)
         dport = ntohs(tcp->dest);
         tcp_hdr_size = tcp->doff * 4;
 #endif
+        opts = get_global_options();
+        // direct = 0 means incoming packet
+        // direct = 1 means outgoing packet
+        if (is_local_address(ip->ip_dst) && is_local_address(ip->ip_src)) {
+            // client and server is in the same machine
+            if ((dport == opts->port && is_client_mode()) ||
+                (sport == opts->port && !is_client_mode())) {
+                direct = 1;
+            }   
+        } else {
+            if (is_local_address(ip->ip_dst)) {
+                direct = 1;
+            }   
+        }  
+
         if (is_local_address(ip->ip_dst)) {
             // 0 means incoming packet
             direct = 1;
