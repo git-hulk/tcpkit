@@ -102,11 +102,11 @@ void check_lua_script() {
 int
 main(int argc, char **argv)
 {
-    int ret;
+    int ret, only_tcp = 0, only_udp = 0;
     pcap_wrapper *pw;
-    char ch, filter[128], is_usage = 0, show_version = 0;
+    char ch, filter[128], *protocol, is_usage = 0, show_version = 0;
 
-    while((ch = getopt(argc, argv, "s:p:i:S:Cd:l:r:hv")) != -1) {
+    while((ch = getopt(argc, argv, "s:p:i:S:Cd:l:r:uthv")) != -1) {
         switch(ch) {
             case 's': opts.server = strdup(optarg); break;
             case 'r': opts.offline_file = strdup(optarg); break;
@@ -115,6 +115,8 @@ main(int argc, char **argv)
             case 'S': opts.script = strdup(optarg); break;
             case 'C': opts.is_calc_mode = 1; break;
             case 'd': opts.duration = atoi(optarg); break;
+            case 't': only_tcp = 1; break;
+            case 'u': only_udp = 1; break;
             case 'l':
                 opts.specified_addresses = 1;
                 if (parse_addresses(optarg)) {
@@ -157,10 +159,13 @@ main(int argc, char **argv)
 
     check_lua_script();
 
+    protocol = "";
+    if (only_udp) protocol = "udp";
+    if (only_tcp) protocol = "tcp";
     if(opts.server && opts.port) {
-        snprintf(filter, sizeof(filter), "host %s and port %d", opts.server, opts.port);
+        snprintf(filter, sizeof(filter), "host %s and %s port %d", opts.server, protocol, opts.port);
     } else if (opts.port) {
-        snprintf(filter, sizeof(filter), " port %d", opts.port);
+        snprintf(filter, sizeof(filter), "%s port %d", protocol, opts.port);
     } else { // without filter
         snprintf(filter, sizeof(filter), "");
     }
