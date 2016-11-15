@@ -89,6 +89,8 @@ static void udp_packet_callback(const struct ip *ip, const struct timeval *tv) {
 
     L = get_lua_vm();
     if (!L) logger(ERROR, "Lua vm didn't initialed.");
+    lua_getglobal(L, DEFAULT_CALLBACK);
+    lua_newtable(L);
 
     iphdr_size = IP_HL(ip)*4;
     udp = (struct udphdr *) ((unsigned char *) ip + iphdr_size);
@@ -99,7 +101,6 @@ static void udp_packet_callback(const struct ip *ip, const struct timeval *tv) {
     sport = ntohs(udp->uh_sport);
     dport = ntohs(udp->uh_dport);
     payload_size = ntohs(udp->uh_ulen);
-    lua_getglobal(L, DEFAULT_CALLBACK);
     script_pushtableinteger(L, "len", payload_size);
     script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
     script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
