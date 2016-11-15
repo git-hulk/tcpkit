@@ -7,22 +7,26 @@
 #define NULL_HDRLEN 4
 
 static void
-push_params(const struct ip *ip, unsigned dlen,  const struct timeval *tv)
+push_params(const struct ip *ip, const struct timeval *tv)
 {
     int tcp_hdr_size, direct = 0;
     struct tcphdr *tcp;
     uint16_t sport, dport;
 	struct tk_options *opts;
+    unsigned int payload_size, size;
 
     tcp = (struct tcphdr *) ((unsigned char *) ip + sizeof(struct ip));
+    size = htons(ip->ip_len);
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
         sport = ntohs(tcp->th_sport);
         dport = ntohs(tcp->th_dport);
         tcp_hdr_size = tcp->th_off * 4;
+        payload_size = size - sizeof(struct ip) - tcp->th_off * 4;
 #else
         sport = ntohs(tcp->source);
         dport = ntohs(tcp->dest);
         tcp_hdr_size = tcp->doff * 4;
+        payload_size = size - sizeof(struct ip) - tcp->doff * 4;
 #endif
         opts = get_global_options();
         // direct = 0 means incoming packet
@@ -49,38 +53,33 @@ push_params(const struct ip *ip, unsigned dlen,  const struct timeval *tv)
         script_pushtableinteger(L, "tv_sec",  tv->tv_sec);
         script_pushtableinteger(L, "tv_usec", tv->tv_usec);
         script_pushtableinteger(L, "direct", direct);
-        script_pushtableinteger(L, "len" , dlen);
+        script_pushtableinteger(L, "len" , payload_size);
         script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
         script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
         script_pushtableinteger(L, "sport", sport);
         script_pushtableinteger(L, "dport", dport);
         script_pushtableinteger(L, "is_client", is_client_mode());
 
-        if (dlen > 0) {
+        if (payload_size > 0) {
             // -----------+-----------+----------+-----....-----+
             // | ETHER    |  IP       | TCP      | payload      |
             // -----------+-----------+----------+--------------+
-            script_pushtablelstring(L, "payload", (char *)tcp + tcp_hdr_size, dlen);
+            script_pushtablelstring(L, "payload", (char *)tcp + tcp_hdr_size, payload_size);
         }
 }
 
-static void packet_callback(const struct ip *ip, const struct timeval *tv) {
-    lua_State *L;
-    struct tcphdr *tcp;
-    unsigned len, datalen; 
+// handle udp
+static void udp_packet_callback(const struct ip *ip, const struct timeval *tv) {
+}
 
-    tcp = (struct tcphdr *) ((unsigned char *) ip + sizeof(struct ip));
-    len = htons(ip->ip_len);
-#if defined(__FAVOR_BSD) || defined(__APPLE__)
-    datalen = len - sizeof(struct ip) - tcp->th_off * 4;    // 4 bits offset 
-#else
-    datalen = len - sizeof(struct ip) - tcp->doff * 4;
-#endif
+static void tcp_packet_callback(const struct ip *ip, const struct timeval *tv) {
+    lua_State *L;
 
     L = get_lua_vm();
     if (!L) logger(ERROR, "Lua vm didn't initialed.");
+
     lua_getglobal(L, DEFAULT_CALLBACK);
-    push_params(ip, datalen, tv);
+    push_params(ip, tv);
     if (lua_pcall(L, 1, 1, 0) != 0) {
         logger(ERROR, "%s", lua_tostring(L, -1));
     }
@@ -115,9 +114,13 @@ process_ip_packet(const struct ip *ip, const struct timeval *tv)
             if (opts->is_calc_mode) {
                 calc_bandwidth(ip, tv);
             } else {
-                packet_callback(ip, tv);
+                tcp_packet_callback(ip, tv);
             }
             break;
+         case IPPROTO_UDP:
+            udp_packet_callback(ip, tv);
+            break;
+
     }
     return 0;
 }
