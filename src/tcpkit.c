@@ -158,9 +158,9 @@ main(int argc, char **argv)
     check_lua_script();
 
     if(opts.server && opts.port) {
-        snprintf(filter, sizeof(filter), "host %s and tcp port %d", opts.server, opts.port);
+        snprintf(filter, sizeof(filter), "host %s and port %d", opts.server, opts.port);
     } else if (opts.port) {
-        snprintf(filter, sizeof(filter), "tcp port %d", opts.port);
+        snprintf(filter, sizeof(filter), " port %d", opts.port);
     } else { // without filter
         snprintf(filter, sizeof(filter), "");
     }

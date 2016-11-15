@@ -68,11 +68,7 @@ function process_packet(item)
         return
     end
 
-    --[[
-    --item.direct = 1 means incoming packet 
-    -- item.direct = 0 means outgoing packet 
-    --]]
-    if item.direct == 1 then
+    if item.incoming == 1 then
         handle_incoming(item)
     else
         handle_outgoing(item)
