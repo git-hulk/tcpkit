@@ -14,8 +14,9 @@ function _M.read_int8(self)
     if self.pos > self.size then
         return nil, "Read out of bound."
     end
+    local b = string.byte(self.payload, self.pos), nil
     self.pos = self.pos + 1
-    return string.byte(self.payload, 1), nil
+    return b
 end
 
 function _M.read_int16(self)
