@@ -98,9 +98,16 @@ static void udp_packet_callback(const struct ip *ip, const struct timeval *tv) {
     script_pushtableinteger(L, "tv_usec", tv->tv_usec);
 
     // udp
+
+#ifdef defined(__FAVOR_BSD) || defined(__APPLE__)
     sport = ntohs(udp->uh_sport);
     dport = ntohs(udp->uh_dport);
     payload_size = ntohs(udp->uh_ulen);
+#else
+    sport = ntohs(udp->source);
+    dport = ntohs(udp->dest);
+    payload_size = ntohs(udp->len);
+#endif
     script_pushtableinteger(L, "len", payload_size);
     script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
     script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));

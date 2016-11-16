@@ -159,7 +159,7 @@ main(int argc, char **argv)
 
     check_lua_script();
 
-    protocol = "";
+    protocol = " ";
     if (only_udp) protocol = "udp";
     if (only_tcp) protocol = "tcp";
     if(opts.server && opts.port) {
