@@ -59,15 +59,19 @@ use `ifconfig`
 sudo ./tcpkit -S ../scripts/example.lua -p 5555 -s 192.168.1.2
 ```
 
-### Monitor redis or memcached cost time 
+### Monitor redis or memcached latency 
 
 ```
 sudo ./tcpkit -S ../scripts/redis_mc_monitor.lua -p 6379 -s 192.168.1.2
 ```
 ![image](https://raw.githubusercontent.com/git-hulk/tcpkit/master/snapshot/redis_mc_monitor.png)
 
+### monitor dns lanteny
+```
+sudo ./tcpkit -S ../scripts/dns_monitor.lua -p 53
+```
 
-### Monitor Kafka cost time
+### Monitor Kafka 
 
 ```
 sudo ./tcpkit -S ../scripts/kafka_monitor.lua -p 6379 -s 192.168.1.2
