@@ -77,7 +77,7 @@ usage(char *prog)
     fprintf(stderr, "\t-d duration, take effect when -C is set.\n");
     fprintf(stderr, "\t-f log file.\n");
     fprintf(stderr, "\t-t only tcp.\n");
-    fprintf(stderr, "\t-t only udp.\n");
+    fprintf(stderr, "\t-u only udp.\n");
     fprintf(stderr, "\t-v version.\n");
     fprintf(stderr, "\t-h help.\n");
 }
