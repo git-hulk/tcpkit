@@ -76,6 +76,8 @@ usage(char *prog)
     fprintf(stderr, "\t-C calculate bandwidth mode.\n");
     fprintf(stderr, "\t-d duration, take effect when -C is set.\n");
     fprintf(stderr, "\t-f log file.\n");
+    fprintf(stderr, "\t-t only tcp.\n");
+    fprintf(stderr, "\t-t only udp.\n");
     fprintf(stderr, "\t-v version.\n");
     fprintf(stderr, "\t-h help.\n");
 }
@@ -142,6 +144,7 @@ main(int argc, char **argv)
         exit(0);
     }
     if (!opts.port && !opts.offline_file) logger(ERROR, "port is required.\n");
+
     if (!opts.device) {
         opts.device = strdup("any");
     }
