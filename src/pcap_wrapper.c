@@ -21,9 +21,14 @@ pw_create(char *dev)
     // promisc = 0, don't put into promiscuous mode
     pcap = pcap_open_live(dev, CAPTURE_LENGTH, 0, READ_TIMEOUT, errbuf);
     if(!pcap) {
-        return NULL;
+        if (strcmp(dev, "any") == 0) {
+            dev = pcap_lookupdev(errbuf);
+            pcap = pcap_open_live(dev, CAPTURE_LENGTH, 0, READ_TIMEOUT, errbuf);
+        }
+        if (!pcap) return NULL;
     }
-
+ 
+    logger(INFO, "listening on device %s", dev);
     pcap_wrapper *pw = malloc(sizeof(*pw));
     pw->pcap = pcap;
     pw->net = net;
@@ -43,7 +48,7 @@ pw_create_offline(const char *filename)
 
     fp = fopen(filename, "r");
     if (!fp) {
-        logger(ERROR, "open offline file %s error as %s\n", filename, strerror(errno));
+        logger(ERROR, "open offline file %s error as %s", filename, strerror(errno));
         return NULL;
     }
     pcap = pcap_fopen_offline(fp, errbuf);
@@ -90,7 +95,7 @@ core_loop(pcap_wrapper *pw, char *filter, pcap_handler handler) {
         return -1;    
     }
     
-    logger(INFO, "start capturing, filter is = [%s]\n", filter);
+    logger(INFO, "start capturing, filter is = [%s]", filter);
     opts = get_global_options();
     if (opts->is_calc_mode) {
         // default calculate bandwidth every 30 second.
