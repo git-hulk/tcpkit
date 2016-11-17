@@ -71,7 +71,7 @@ function _M.read_short_string(self)
     local start = self.pos 
     self.pos = self.pos + size
 
-    return string.sub(self.payload, start, start + size), nil
+    return string.sub(self.payload, start, start + size - 1), nil
 end
 
 return _M
