@@ -1,3 +1,7 @@
+/*
+ * @(#) $Header: /tcpdump/master/libpcap/dlpisubs.h,v 1.2 2008-04-04 19:37:45 guy Exp $
+ */
+
 #ifndef dlpisubs_h
 #define	dlpisubs_h
 
