@@ -99,7 +99,7 @@ static void udp_packet_callback(const struct ip *ip, const struct timeval *tv) {
 
     // udp
 
-#ifdef defined(__FAVOR_BSD) || defined(__APPLE__)
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
     sport = ntohs(udp->uh_sport);
     dport = ntohs(udp->uh_dport);
     payload_size = ntohs(udp->uh_ulen);
