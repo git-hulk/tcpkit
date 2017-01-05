@@ -5,16 +5,19 @@ A tool analyze tcp packets with Lua.
 
 ```
 ./tcpkit
-    -s server ip.
-    -p port.
-    -i device.
-    -S lua script path, default is ../scripts/example.lua.
-    -l local address.
-    -C calculate bandwidth mode.
-    -d duration, take effect when -C is set.
-    -f log file.
-    -v version.
-    -h help.
+    -s server ip
+    -r offile file 
+    -p port
+    -i device
+    -S lua script path, default is ../scripts/example.lua
+    -l local address
+    -C calculate bandwidth mode
+    -d duration, take effect when -C is set
+    -f log file
+    -t only tcp
+    -u only udp
+    -v version
+    -h help
 ```
 
 ### install 

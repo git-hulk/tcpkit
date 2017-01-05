@@ -67,19 +67,20 @@ is_client_mode ()
 void
 usage(char *prog)
 {
-    fprintf(stderr, "%s is a tool to capature tcp packets, and you can analyze packets with lua.\n", prog);
-    fprintf(stderr, "\t-s server ip.\n");
-    fprintf(stderr, "\t-p port.\n");
-    fprintf(stderr, "\t-i device.\n");
-    fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua.\n");
-    fprintf(stderr, "\t-l local address.\n");
-    fprintf(stderr, "\t-C calculate bandwidth mode.\n");
-    fprintf(stderr, "\t-d duration, take effect when -C is set.\n");
-    fprintf(stderr, "\t-f log file.\n");
-    fprintf(stderr, "\t-t only tcp.\n");
-    fprintf(stderr, "\t-u only udp.\n");
-    fprintf(stderr, "\t-v version.\n");
-    fprintf(stderr, "\t-h help.\n");
+    fprintf(stderr, "%s is a tool to capature tcp packets, and you can analyze packets with lua\n", prog);
+    fprintf(stderr, "\t-s server ip\n");
+    fprintf(stderr, "\t-p port\n");
+    fprintf(stderr, "\t-i device\n");
+    fprintf(stderr, "\t-r offline file\n");
+    fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
+    fprintf(stderr, "\t-l local address\n");
+    fprintf(stderr, "\t-C calculate bandwidth mode\n");
+    fprintf(stderr, "\t-d duration, take effect when -C is set\n");
+    fprintf(stderr, "\t-f log file\n");
+    fprintf(stderr, "\t-t only tcp\n");
+    fprintf(stderr, "\t-u only udp\n");
+    fprintf(stderr, "\t-v version\n");
+    fprintf(stderr, "\t-h help\n");
 }
 
 void check_lua_script() {
