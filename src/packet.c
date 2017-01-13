@@ -40,44 +40,52 @@ push_params(const struct ip *ip, const struct timeval *tv)
 {
     int tcp_hdr_size, incoming;
     struct tcphdr *tcp;
+    uint8_t flags;
     uint16_t sport, dport;
-    unsigned int payload_size, size, iphdr_size;
+    unsigned int payload_size, size, iphdr_size, seq, ack;
 
     iphdr_size = IP_HL(ip)*4;
     tcp = (struct tcphdr *) ((unsigned char *) ip + iphdr_size);
     size = htons(ip->ip_len);
+    seq = htonl(tcp->th_seq);
+    ack = htonl(tcp->th_ack);
+    flags = tcp->th_flags;
+
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
-        sport = ntohs(tcp->th_sport);
-        dport = ntohs(tcp->th_dport);
-        tcp_hdr_size = tcp->th_off * 4;
-        payload_size = size - iphdr_size - tcp->th_off * 4;
+    sport = ntohs(tcp->th_sport);
+    dport = ntohs(tcp->th_dport);
+    tcp_hdr_size = tcp->th_off * 4;
+    payload_size = size - iphdr_size - tcp->th_off * 4;
 #else
-        sport = ntohs(tcp->source);
-        dport = ntohs(tcp->dest);
-        tcp_hdr_size = tcp->doff * 4;
-        payload_size = size - iphdr_size - tcp->doff * 4;
+    sport = ntohs(tcp->source);
+    dport = ntohs(tcp->dest);
+    tcp_hdr_size = tcp->doff * 4;
+    payload_size = size - iphdr_size - tcp->doff * 4;
 #endif
-        incoming = checkPacketincoming(ip->ip_src, sport, ip->ip_dst, dport);
+    incoming = checkPacketincoming(ip->ip_src, sport, ip->ip_dst, dport);
 
-        lua_State *L = get_lua_vm();
-        lua_newtable(L);
-        script_pushtableinteger(L, "tv_sec",  tv->tv_sec);
-        script_pushtableinteger(L, "tv_usec", tv->tv_usec);
-        script_pushtableinteger(L, "incoming", incoming);
-        script_pushtableinteger(L, "len" , payload_size);
-        script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
-        script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
-        script_pushtableinteger(L, "sport", sport);
-        script_pushtableinteger(L, "dport", dport);
-        script_pushtableinteger(L, "is_client", is_client_mode());
-        script_pushtableinteger(L, "udp", 0);
+    lua_State *L = get_lua_vm();
+    lua_newtable(L);
+    script_pushtableinteger(L, "tv_sec",  tv->tv_sec);
+    script_pushtableinteger(L, "tv_usec", tv->tv_usec);
+    script_pushtableinteger(L, "incoming", incoming);
+    script_pushtableinteger(L, "len" , payload_size);
+    script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
+    script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
+    script_pushtableinteger(L, "sport", sport);
+    script_pushtableinteger(L, "dport", dport);
+    script_pushtableinteger(L, "seq", seq);
+    script_pushtableinteger(L, "ack", ack);
+    script_pushtableinteger(L, "flags", flags);
+    script_pushtableinteger(L, "is_client", is_client_mode());
+    script_pushtableinteger(L, "udp", 0);
 
-        if (payload_size > 0) {
-            // -----------+-----------+----------+-----....-----+
-            // | ETHER    |  IP       | TCP      | payload      |
-            // -----------+-----------+----------+--------------+
-            script_pushtablelstring(L, "payload", (char *)tcp + tcp_hdr_size, payload_size);
-        }
+    if (payload_size > 0) {
+        // -----------+-----------+----------+-----....-----+
+        // | ETHER    |  IP       | TCP      | payload      |
+        // -----------+-----------+----------+--------------+
+        script_pushtablelstring(L, "payload", (char *)tcp + tcp_hdr_size, payload_size);
+    }
 }
 
 // handle udp packet
