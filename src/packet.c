@@ -47,16 +47,21 @@ push_params(const struct ip *ip, const struct timeval *tv)
     iphdr_size = IP_HL(ip)*4;
     tcp = (struct tcphdr *) ((unsigned char *) ip + iphdr_size);
     size = htons(ip->ip_len);
+
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
     seq = htonl(tcp->th_seq);
     ack = htonl(tcp->th_ack);
     flags = tcp->th_flags;
-
-#if defined(__FAVOR_BSD) || defined(__APPLE__)
     sport = ntohs(tcp->th_sport);
     dport = ntohs(tcp->th_dport);
     tcp_hdr_size = tcp->th_off * 4;
     payload_size = size - iphdr_size - tcp->th_off * 4;
 #else
+    seq = htonl(tcp->seq);
+    ack = htonl(tcp->ack_seq);
+    flags = tcp->fin | (tcp->syn<<1) | (tcp->rst<<2) | (tcp->psh<<3);
+    if (tcp->ack) flags |= 0x10; 
+    if (tcp->urg) flags |= 0x20; 
     sport = ntohs(tcp->source);
     dport = ntohs(tcp->dest);
     tcp_hdr_size = tcp->doff * 4;
