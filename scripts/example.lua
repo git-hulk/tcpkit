@@ -12,6 +12,8 @@ function process_packet(item)
     -- item.ack
     -- item.flags
     if item.len >= 0 then
-        print(item.tv_sec, item.tv_usec, item.src, item.sport, item.dst, item.dport, item.len, item.payload)
+        local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..item.tv_usec
+        local network_str = item.src .. ":" .. item.sport .. "=>" .. item.dst .. ":" .. item.dport
+        print(time_str, network_str, item.len, item.payload)
     end
 end
