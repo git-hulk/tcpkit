@@ -35,6 +35,7 @@ struct address_list {
 
 int
 get_addresses(void) {
+    int count = 0;
     pcap_if_t *devlist, *curr;
     pcap_addr_t *addr;
     struct sockaddr *realaddr;
@@ -43,14 +44,17 @@ get_addresses(void) {
     struct address_list *address_list_curr;
 
     if (pcap_findalldevs(&devlist, errbuf)) {
-        logger(ERROR, "You should use -l to assign local ip.\n");
+        logger(ERROR, "You should use -l to assign local ip (for example, 192.168.0.1).\n");
         return 1; /* return 1 would be never reached */
+    }
+    if (!devlist) {
+        logger(ERROR, "You should run with sudo or root.\n");
+        return 1;
     }
     
     address_list_curr = &address_list;
     for (curr = devlist; curr; curr = curr->next) {
         if (curr->flags & PCAP_IF_LOOPBACK) continue;
-
         for (addr = curr->addresses; addr; addr = addr->next) {
             if (addr->addr) {
                 realaddr = addr->addr;
@@ -59,19 +63,23 @@ get_addresses(void) {
             } else {
                 continue;
             }
-            if (realaddr->sa_family == AF_INET ||
-                    realaddr->sa_family == AF_INET6) {
+            if (realaddr->sa_family == AF_INET || realaddr->sa_family == AF_INET6) {
                 sin = (struct sockaddr_in *) realaddr;
                 address_list_curr->next = malloc(sizeof(struct address_list));
                 if (!address_list_curr->next) abort();
                 address_list_curr->next->in_addr = sin->sin_addr;
                 address_list_curr->next->next = NULL;
                 address_list_curr = address_list_curr->next;
+                count++;
             }
         }
         
     }
     pcap_freealldevs(devlist);
+    if (count <= 0) {
+        logger(ERROR, "You should use -l to assign local ip (for example, 192.168.0.1)\n");
+        return 1;
+    }
     return 0;
 }
 
