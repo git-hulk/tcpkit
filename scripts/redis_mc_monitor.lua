@@ -3,6 +3,7 @@
 local packet_hash_sec = {}
 local packet_hash_usec = {}
 local packet_hash_cmd = {}
+local seq_hash = {}
 
 function parse_request(str)
     if string.byte(str, 1) ~= 42 then
@@ -22,6 +23,7 @@ end
 
 function calculate_request_cost(key, item)
     if packet_hash_cmd[key] then
+        local seq_key = string.format("%s-%d", key, item.seq)
         local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..item.tv_usec
         local cost = (item.tv_sec - packet_hash_sec[key]) * 1000
         cost = cost +  (item.tv_usec - packet_hash_usec[key]) / 1000
@@ -33,13 +35,25 @@ function calculate_request_cost(key, item)
         packet_hash_sec[key] = nil 
         packet_hash_usec[key] = nil 
         packet_hash_cmd[key] = nil 
+        seq_hash[key] = nil
     end
 end
 
 function store_request(key, item)
+    if not seq_hash[key] then
+        seq_hash[key] = {}
+    end
+    if packet_hash_cmd[key] and seq_hash[key][item.seq] then
+        local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..item.tv_usec
+        local cost = (item.tv_sec - packet_hash_sec[key]) * 1000
+        cost = cost +  (item.tv_usec - packet_hash_usec[key]) / 1000
+        print(string.format("%s | %36s | %d | %1.20s... | packet was retransmited after %3.3fms", time_str, key, item.seq, packet_hash_cmd[key], cost))
+        return
+    end
     packet_hash_sec[key] = item.tv_sec
     packet_hash_usec[key] = item.tv_usec
     packet_hash_cmd[key] = parse_request(item.payload)
+    seq_hash[key][item.seq] = 1
 end
 
 function handle_incoming(item)
