@@ -118,17 +118,15 @@ parse_addresses(char addresses[]) {
     return 0;
 }
 
-int
+void
 free_addresses(void) {
     struct address_list *next;
-    
+
     while (address_list.next) {
         next = address_list.next->next;
         free(address_list.next);
         address_list.next = next;
-        
     }
-    return 0;
 }
 
 int
