@@ -63,12 +63,7 @@ set_config(lua_State* L)
             opts->device = strdup(val);
         } else if(!opts->device && strcmp(key, "log_file") == 0)  {
             opts->log_file= strdup(val);
-        } else if(!opts->specified_addresses && strcmp(key, "local_address") == 0)  {
-            if(!parse_addresses((char *)val)) {
-                opts->specified_addresses = 1;
-            }
         }
-
         lua_pop(L, 2);
         // stack state: | -1 => key | index => table |
     }

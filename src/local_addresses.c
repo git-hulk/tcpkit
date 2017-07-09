@@ -27,114 +27,94 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "util.h"
+#include "array.h"
 
-struct address_list {
+
+struct array*
+get_address_from_device(void) {
+    char *elem;
+    struct array *addrs;
     struct in_addr in_addr;
-    struct address_list *next;
-} address_list;
-
-int
-get_addresses(void) {
-    int count = 0;
-    pcap_if_t *devlist, *curr;
-    pcap_addr_t *addr;
-    struct sockaddr *realaddr;
-    struct sockaddr_in *sin;
+    struct pcap_addr *addr;
+    pcap_if_t *devlist, *dev;
+    struct sockaddr *real_addr;
     char errbuf[PCAP_ERRBUF_SIZE];
-    struct address_list *address_list_curr;
 
-    if (pcap_findalldevs(&devlist, errbuf)) {
-        logger(ERROR, "You should use -l to assign local ip (for example, 192.168.0.1).\n");
-        return 1; /* return 1 would be never reached */
+    if (pcap_findalldevs(&devlist, errbuf) || !devlist) {
+        return NULL; // failed to get device list
     }
-    if (!devlist) {
-        logger(ERROR, "You should run with sudo or root.\n");
-        return 1;
-    }
-    
-    address_list_curr = &address_list;
-    for (curr = devlist; curr; curr = curr->next) {
-        if (curr->flags & PCAP_IF_LOOPBACK) continue;
-        for (addr = curr->addresses; addr; addr = addr->next) {
-            if (addr->addr) {
-                realaddr = addr->addr;
-            } else if (addr->dstaddr) {
-                realaddr = addr->dstaddr;
-            } else {
-                continue;
-            }
-            if (realaddr->sa_family == AF_INET || realaddr->sa_family == AF_INET6) {
-                sin = (struct sockaddr_in *) realaddr;
-                address_list_curr->next = malloc(sizeof(struct address_list));
-                if (!address_list_curr->next) abort();
-                address_list_curr->next->in_addr = sin->sin_addr;
-                address_list_curr->next->next = NULL;
-                address_list_curr = address_list_curr->next;
-                count++;
+    addrs = array_alloc(sizeof(struct in_addr), 10);
+    for (dev = devlist; dev; dev = dev->next) {
+        if (dev->flags & PCAP_IF_LOOPBACK) continue;
+        for (addr = dev->addresses; addr; addr = addr->next) {
+            if (!addr->addr && !addr->dstaddr) continue;
+            real_addr = addr->addr ? addr->addr : addr->dstaddr;
+            if (real_addr->sa_family == AF_INET || real_addr->sa_family == AF_INET6) {
+                in_addr = ((struct sockaddr_in *) real_addr)->sin_addr;
+                elem = array_push(addrs);
+                memcpy(elem, &in_addr, sizeof(struct in_addr));
             }
         }
-        
     }
     pcap_freealldevs(devlist);
-    if (count <= 0) {
-        logger(ERROR, "You should use -l to assign local ip (for example, 192.168.0.1)\n");
-        return 1;
-    }
-    return 0;
+    return addrs;
 }
 
-int
-parse_addresses(char addresses[]) {
-    char *next, *comma, *current;
-    struct address_list *address_list_curr;
+struct array*
+get_address_from_string(char *addrs_str) {
+    int n, len;
+    struct array *addrs;
+    struct in_addr in_addr;
+    char *pos, *address, *start, *elem;
     
-    next = addresses;
-    address_list_curr = &address_list;
-    while ((comma = strchr(next, ','))) {
-        current = malloc((comma - next) + 1);
-        if (!current) abort();
-        strncpy(current, next, (comma - next));
-        current[comma - next] = '\0';
-        address_list_curr->next = malloc(sizeof(struct address_list));
-        if (!address_list_curr->next) abort();
-        address_list_curr->next->next = NULL;
-        if (!inet_aton(current, &address_list_curr->next->in_addr)) {
-            free(current);
-            return 1;
+    start = addrs_str;
+    len = strlen(addrs_str);
+    addrs = array_alloc(sizeof(struct in_addr), 10);
+    while((pos = strchr(start, ',')) != NULL || start < addrs_str + len) {
+        if (!pos) { // last part in ip list string
+            pos = addrs_str + len;
         }
-        address_list_curr = address_list_curr->next;
-        free(current);
-        next = comma + 1;
+        n = pos - start;
+        address = malloc(n + 1); // reversed 1 byte for '\0'
+        // FIXME: out of memory
+        strncpy(address, start, n);
+        address[n] = '\0';
+        if (!inet_aton(address, &in_addr)) { // string to inet adress
+            free(address);
+            continue;
+        }
+        elem = array_push(addrs);
+        memcpy(elem, &in_addr, sizeof(struct in_addr));
+        start = pos + 1;
     }
-    
-    address_list_curr->next = malloc(sizeof(struct address_list));
-    if (!address_list_curr->next) abort();
-    address_list_curr->next->next = NULL;
-    if (!inet_aton(next, &address_list_curr->next->in_addr)) {
-        return 1;
-    }
-    
-    address_list_curr = address_list_curr->next;
-    return 0;
+    return addrs;
 }
 
 void
-free_addresses(void) {
-    struct address_list *next;
+dump_local_addresses(struct array *addrs) {
+    int i;
+    char *elem, *addr_str;
 
-    while (address_list.next) {
-        next = address_list.next->next;
-        free(address_list.next);
-        address_list.next = next;
+    if (!addrs) return;
+    printf("local addresses list: ");
+    for (i = 0; i < array_used(addrs); i++) {
+        elem = array_pos(addrs, i);
+        if ((addr_str = inet_ntoa(*(struct in_addr*)elem))) {
+            printf("%s\t", addr_str);
+        }
     }
+    printf("\n");
 }
 
 int
-is_local_address(struct in_addr addr) {
-    struct address_list *curr;
-    
-    for (curr = address_list.next; curr; curr = curr->next) {
-        if (curr->in_addr.s_addr == addr.s_addr) {
+is_local_address(struct array *addrs, struct in_addr addr) {
+    int i;
+    char *elem;
+
+    if (!addrs) return 0;
+    for (i = 0; i < array_used(addrs); i++) {
+        elem = array_pos(addrs, i);
+        if (((struct in_addr*)elem)->s_addr == addr.s_addr) {
             return 1;
         }
     }

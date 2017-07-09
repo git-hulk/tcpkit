@@ -20,14 +20,15 @@ static int checkPacketincoming(struct in_addr src, int sport, struct in_addr dst
     // incoming = 0 means outgoing packet
     // incoming = 1 means incoming packet
     opts = get_global_options();
-    if (is_local_address(dst) && is_local_address(src)) {
+    if (is_local_address(opts->local_addresses, dst)
+        && is_local_address(opts->local_addresses, src)) {
         // client and server is in the same machine
         if ((dport == opts->port && is_client_mode()) ||
                 (sport == opts->port && !is_client_mode())) {
             incoming = 1;
         }
     } else {
-        if (is_local_address(dst)) {
+        if (is_local_address(opts->local_addresses, dst)) {
             incoming = 1;
         }
     }
@@ -162,10 +163,12 @@ static void
 calc_bandwidth(const struct ip *ip, const struct timeval *tv)
 { 
     struct bandwidth *bw;
+	struct tk_options *opts;
 
     bw = get_global_bandwidth();
     need_report_bandwidth();
-    if (is_local_address(ip->ip_dst)) {
+    opts = get_global_options();
+    if (is_local_address(opts->local_addresses, ip->ip_dst)) {
         bw->in_bytes += htons(ip->ip_len);        
         bw->in_packets += 1;
     } else {

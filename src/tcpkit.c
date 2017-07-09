@@ -122,8 +122,9 @@ main(int argc, char **argv)
             case 'u': only_udp = 1; break;
             case 'l':
                 opts.specified_addresses = 1;
-                if (parse_addresses(optarg)) {
-                    logger(ERROR, "parsing local addresses\n");
+                opts.local_addresses = get_address_from_string(optarg);
+                if (array_used(opts.local_addresses) <= 0) {
+                    logger(ERROR, "Failed to get local addresses from option\n");
                     return EXIT_FAILURE;
                 }
                 break;
@@ -132,8 +133,7 @@ main(int argc, char **argv)
             case 'v': show_version= 1; break;
         }
     }
-
-    if( is_usage ) {
+    if(is_usage) {
         usage(argv[0]);
         exit(0);
     }
@@ -141,8 +141,12 @@ main(int argc, char **argv)
         printf("%s version is %s\n", argv[0], VERSION);
         exit(0);
     }
-    if(!opts.specified_addresses && get_addresses() != 0) {
-        exit(0);
+    if(!opts.specified_addresses) {
+        opts.local_addresses = get_address_from_device();
+        if (array_used(opts.local_addresses) <= 0) {
+            logger(ERROR, "Failed to get local addresses from device\n");
+            exit(0);
+        }
     }
     if (!opts.port && !opts.offline_file) logger(ERROR, "port is required.\n");
 

@@ -19,15 +19,14 @@
  *
 **/
 
-#if !defined(LOCAL_ADDRESSES_H)
+#ifndef LOCAL_ADDRESSES_H
 #define LOCAL_ADDRESSES_H
 
 #include <netinet/in.h>
+#include "array.h"
 
-int get_addresses(void);
-int parse_addresses(char []);
-int free_addresses(void);
-
-int is_local_address(struct in_addr);
-
+struct array *get_address_from_device(void);
+struct array *get_address_from_string(char *addrs_str);
+void dump_local_addresses(struct array *addrs);
+int is_local_address(struct array *addrs, struct in_addr addr);
 #endif

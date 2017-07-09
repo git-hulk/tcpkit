@@ -7,6 +7,7 @@
 #include "pcap_wrapper.h"
 #include "script.h"
 #include "util.h"
+#include "array.h"
 
 #define VERSION "0.1.0"
 #define DEFAULT_CALLBACK "process_packet"
@@ -21,6 +22,7 @@ struct tk_options {
     int specified_addresses; 
     int is_calc_mode;
     int duration;
+    struct array *local_addresses;
 };
 
 struct bandwidth {
