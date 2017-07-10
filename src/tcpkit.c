@@ -1,13 +1,14 @@
-#include "tcpkit.h"
-#include "packet.h"
-#include "bandwidth.h"
-#include "local_addresses.h"
-
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+
+#include "tcpkit.h"
+#include "packet.h"
+#include "bandwidth.h"
+#include "local_addresses.h"
+
 
 struct server {
     char *filter;
@@ -88,17 +89,27 @@ parse_options(int argc, char **argv) {
 }
 
 static lua_State *
-create_lua_vm(const char *script) {
-    if(!script) {
-        script = "../scripts/example.lua";
+create_lua_vm(const char *filename) {
+    int ret;
+    lua_State *vm;
+
+    vm = script_init_vm();
+    if(filename && access(filename, R_OK) == 0) {
+        ret = luaL_dofile(vm, filename);
+    } else {
+        char *chunk = "\
+        function process_packet(item) \
+            if item.len >= 0 then \
+            local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec)..'.'..item.tv_usec\
+            local network_str = item.src .. ':' .. item.sport .. '=>' .. item.dst .. ':' .. item.dport \
+            print(time_str, network_str, item.len, item.payload) \
+            end \
+        end \
+        ";
+        ret = luaL_dostring(vm, chunk);
     }
-    if(access(script, R_OK) == -1) {
-        return NULL;
-    }
-    lua_State *vm = script_init(script);
-    // check callback function is exist.
-    if(!script_check_func_exists(vm, DEFAULT_CALLBACK)) {
-        return NULL;
+    if (ret != 0) {
+        logger(ERROR,"%s", lua_tostring(vm, -1));
     }
     return vm;
 }

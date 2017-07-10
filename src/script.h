@@ -5,7 +5,7 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
-lua_State *script_init(const char *filename);
+lua_State *script_init_vm(void);
 void script_release(lua_State *L);
 void script_need_gc(lua_State *L);
 int script_check_func_exists(lua_State * L, const char *func_name);

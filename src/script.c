@@ -13,52 +13,39 @@ lua_loadlib(lua_State *L, const char *libname, lua_CFunction luafunc) {
 }
 
 void
-script_pushtableinteger(lua_State* L , char* key , long value)
-{
+script_pushtableinteger(lua_State* L , char* key , long value) {
     lua_pushstring(L, key);
     lua_pushinteger(L, value);
     lua_settable(L, -3);
 }
 
 void
-script_pushtablestring(lua_State* L , char* key , char* value)
-{
+script_pushtablestring(lua_State* L , char* key , char* value) {
     lua_pushstring(L, key);
     lua_pushstring(L, value);
     lua_settable(L, -3);
 }
 
 void
-script_pushtablelstring(lua_State* L , char* key , char* value, int len)
-{
+script_pushtablelstring(lua_State* L , char* key , char* value, int len) {
     lua_pushstring(L, key);
     lua_pushlstring(L, value, len);
     lua_settable(L, -3);
 }
 
 lua_State *
-script_init(const char *filename)
-{
-    lua_State *L = luaL_newstate();
+script_init_vm(void) {
+    lua_State *L;
 
+    L = luaL_newstate();
     luaL_openlibs(L);
-
     lua_loadlib(L, "cjson", luaopen_cjson);
-    if(luaL_dofile(L, filename)) {
-         logger(ERROR,"%s", lua_tostring(L, -1));
-    }
-
     return L;
 }
 
 void 
-script_release(lua_State *L)
-{
+script_release(lua_State *L) {
     lua_close(L);
-}
-
-void
-script_load_config (lua_State *L) {
 }
 
 int
@@ -68,13 +55,11 @@ script_check_func_exists(lua_State * L, const char *func_name) {
     lua_getglobal(L, func_name);  
     ret = lua_isfunction(L,lua_gettop(L));
     lua_pop(L,-1);
-
     return ret;
 }
 
 void
-script_need_gc(lua_State* L)
-{
+script_need_gc(lua_State* L) {
 #define LUA_GC_CYCLE_PERIOD 500
     static long gc_count = 0; 
 
