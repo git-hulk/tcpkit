@@ -34,7 +34,7 @@ set_log_level(enum LEVEL level) {
 void
 set_log_file(char *filename)
 {
-    log_file = filename;
+    if (filename) log_file = filename;
 }
 
 void

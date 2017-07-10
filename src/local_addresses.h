@@ -25,8 +25,6 @@
 #include <netinet/in.h>
 #include "array.h"
 
-struct array *get_address_from_device(void);
-struct array *get_address_from_string(char *addrs_str);
+struct array *get_local_addresses(char *addrs_str);
 void dump_local_addresses(struct array *addrs);
-int is_local_address(struct array *addrs, struct in_addr addr);
 #endif

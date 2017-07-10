@@ -5,6 +5,7 @@
 #include "pcap_wrapper.h"
 #include "util.h"
 #include "tcpkit.h"
+#include "bandwidth.h"
 
 pcap_wrapper* 
 pw_create(char *dev) 
@@ -56,7 +57,6 @@ pw_create_offline(const char *filename)
         logger(ERROR, "pcap: %s\n", errbuf);
         return NULL;
     }
-
     pw = malloc(sizeof(*pw));
     pw->pcap = pcap;
     return pw;
@@ -86,7 +86,7 @@ pcap_set_filter (pcap_wrapper* pw, char *filter)
 int
 core_loop(pcap_wrapper *pw, char *filter, pcap_handler handler) {
     int ret;
-    struct tk_options *opts;
+    struct options *opts;
 
     if(! pw) return -1;
 
@@ -96,7 +96,7 @@ core_loop(pcap_wrapper *pw, char *filter, pcap_handler handler) {
     }
     
     logger(INFO, "start capturing, filter is = [%s]", filter);
-    opts = get_global_options();
+    opts = get_options();
     if (opts->is_calc_mode) {
         // default calculate bandwidth every 30 second.
         opts->duration = opts->duration >= 1 ? opts->duration : 30;

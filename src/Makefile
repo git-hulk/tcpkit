@@ -13,7 +13,7 @@ TCPKIT_CC = $(CC) $(CFLAGS) $(CINCLUDES)
 PROG = tcpkit
 
 
-OBJS = local_addresses.o util.o cJSON.o pcap_wrapper.o packet.o script.o tcpkit.o array.o
+OBJS = local_addresses.o util.o cJSON.o pcap_wrapper.o packet.o script.o tcpkit.o array.o bandwidth.o
 
 all: deps tcpkit
 .PHONY: all

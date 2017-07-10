@@ -4,6 +4,7 @@
 #include "local_addresses.h"
 #include <stdlib.h>
 #include <string.h>
+#include "bandwidth.h"
 
 #define NULL_HDRLEN 4
 
@@ -15,20 +16,20 @@
 
 static int checkPacketincoming(struct in_addr src, int sport, struct in_addr dst, int dport) {
     int incoming = 0;
-	struct tk_options *opts;
+	struct options *opts;
 
     // incoming = 0 means outgoing packet
     // incoming = 1 means incoming packet
-    opts = get_global_options();
-    if (is_local_address(opts->local_addresses, dst)
-        && is_local_address(opts->local_addresses, src)) {
+    opts = get_options();
+    if (is_local_address(dst)
+        && is_local_address(src)) {
         // client and server is in the same machine
         if ((dport == opts->port && is_client_mode()) ||
                 (sport == opts->port && !is_client_mode())) {
             incoming = 1;
         }
     } else {
-        if (is_local_address(opts->local_addresses, dst)) {
+        if (is_local_address(dst)) {
             incoming = 1;
         }
     }
@@ -163,12 +164,10 @@ static void
 calc_bandwidth(const struct ip *ip, const struct timeval *tv)
 { 
     struct bandwidth *bw;
-	struct tk_options *opts;
 
-    bw = get_global_bandwidth();
+    bw = get_bandwidth();
     need_report_bandwidth();
-    opts = get_global_options();
-    if (is_local_address(opts->local_addresses, ip->ip_dst)) {
+    if (is_local_address(ip->ip_dst)) {
         bw->in_bytes += htons(ip->ip_len);        
         bw->in_packets += 1;
     } else {
@@ -180,10 +179,10 @@ calc_bandwidth(const struct ip *ip, const struct timeval *tv)
 static int
 process_ip_packet(const struct ip *ip, const struct timeval *tv)
 {
-    struct tk_options *opts;
+    struct options *opts;
     switch (ip->ip_p) {
         case IPPROTO_TCP:
-            opts = get_global_options();
+            opts = get_options();
             if (opts->is_calc_mode) {
                 calc_bandwidth(ip, tv);
             } else {

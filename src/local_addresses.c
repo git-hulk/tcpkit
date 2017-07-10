@@ -30,8 +30,8 @@
 #include "array.h"
 
 
-struct array*
-get_address_from_device(void) {
+static struct array*
+get_addresses_from_device(void) {
     char *elem;
     struct array *addrs;
     struct in_addr in_addr;
@@ -60,15 +60,17 @@ get_address_from_device(void) {
     return addrs;
 }
 
-struct array*
-get_address_from_string(char *addrs_str) {
+static struct array*
+get_addresses_from_string(char *addrs_str) {
     int n, len;
     struct array *addrs;
     struct in_addr in_addr;
     char *pos, *address, *start, *elem;
     
-    start = addrs_str;
+    if (!addrs_str || strlen(addrs_str) <= 0) return NULL;
+
     len = strlen(addrs_str);
+    start = addrs_str;
     addrs = array_alloc(sizeof(struct in_addr), 10);
     while((pos = strchr(start, ',')) != NULL || start < addrs_str + len) {
         if (!pos) { // last part in ip list string
@@ -106,17 +108,13 @@ dump_local_addresses(struct array *addrs) {
     printf("\n");
 }
 
-int
-is_local_address(struct array *addrs, struct in_addr addr) {
-    int i;
-    char *elem;
+struct array*
+get_local_addresses(char *addrs_str) {
+    struct array *addrs;
 
-    if (!addrs) return 0;
-    for (i = 0; i < array_used(addrs); i++) {
-        elem = array_pos(addrs, i);
-        if (((struct in_addr*)elem)->s_addr == addr.s_addr) {
-            return 1;
-        }
+    addrs = get_addresses_from_string(addrs_str);
+    if (array_used(addrs) > 0) {
+        return addrs;
     }
-    return 0;
+    return get_addresses_from_device();
 }

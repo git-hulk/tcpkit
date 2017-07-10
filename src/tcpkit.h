@@ -4,6 +4,7 @@
 #define LUA_COMPAT_MODULE
 
 #include <stdint.h>
+#include <netinet/in.h>
 #include "pcap_wrapper.h"
 #include "script.h"
 #include "util.h"
@@ -12,17 +13,20 @@
 #define VERSION "0.1.0"
 #define DEFAULT_CALLBACK "process_packet"
 
-struct tk_options {
+struct options {
+    int tcp;
+    int udp;
+    int port;
+    int duration;
+    int is_usage;
+    int show_version;
+    int is_calc_mode;
     char *server;
     char *device;
     char *script;
     char *log_file;
     char *offline_file;
-    int port;
-    int specified_addresses; 
-    int is_calc_mode;
-    int duration;
-    struct array *local_addresses;
+    char *local_addresses;
 };
 
 struct bandwidth {
@@ -33,9 +37,9 @@ struct bandwidth {
     uint64_t last_calc_time;
 };
 
-lua_State *get_lua_vm(); 
-struct tk_options *get_global_options();
-struct bandwidth *get_global_bandwidth();
-void need_report_bandwidth();
 int is_client_mode();
+struct options *get_options();
+struct lua_State * get_lua_vm();
+struct bandwidth *get_bandwidth();
+int is_local_address(struct in_addr addr);
 #endif
