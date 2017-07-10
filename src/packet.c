@@ -14,27 +14,24 @@
     #define IP_HL(ip) (((ip)->ip_hl) & 0x0f)
 #endif
 
-static int checkPacketincoming(struct in_addr src, int sport, struct in_addr dst, int dport) {
-    int incoming = 0;
+
+static int
+is_client_mode(struct options *opts) {
+    return opts->server != NULL;
+}
+
+// return type for every packet
+// 1 for incoming
+// 0 for outgoing
+static int
+get_packet_type(struct in_addr src, int sport, struct in_addr dst, int dport) {
 	struct options *opts;
 
-    // incoming = 0 means outgoing packet
-    // incoming = 1 means incoming packet
     opts = get_options();
-    if (is_local_address(dst)
-        && is_local_address(src)) {
-        // client and server is in the same machine
-        if ((dport == opts->port && is_client_mode()) ||
-                (sport == opts->port && !is_client_mode())) {
-            incoming = 1;
-        }
-    } else {
-        if (is_local_address(dst)) {
-            incoming = 1;
-        }
+    if (is_local_address(dst) && is_local_address(src)) {
+        return is_client_mode(opts) ? sport == opts->port : dport == opts->port;
     }
-
-    return incoming;
+    return is_local_address(dst);
 }
 
 static void
@@ -69,8 +66,9 @@ push_params(const struct ip *ip, const struct timeval *tv)
     tcp_hdr_size = tcp->doff * 4;
     payload_size = size - iphdr_size - tcp->doff * 4;
 #endif
-    incoming = checkPacketincoming(ip->ip_src, sport, ip->ip_dst, dport);
+    incoming = get_packet_type(ip->ip_src, sport, ip->ip_dst, dport);
 
+    struct options *opts = get_options();
     lua_State *L = get_lua_vm();
     lua_newtable(L);
     script_pushtableinteger(L, "tv_sec",  tv->tv_sec);
@@ -84,7 +82,7 @@ push_params(const struct ip *ip, const struct timeval *tv)
     script_pushtableinteger(L, "seq", seq);
     script_pushtableinteger(L, "ack", ack);
     script_pushtableinteger(L, "flags", flags);
-    script_pushtableinteger(L, "is_client", is_client_mode());
+    script_pushtableinteger(L, "is_client", is_client_mode(opts));
     script_pushtableinteger(L, "udp", 0);
 
     if (payload_size > 0) {
@@ -128,7 +126,7 @@ static void udp_packet_callback(const struct ip *ip, const struct timeval *tv) {
     script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
     script_pushtableinteger(L, "sport", sport);
     script_pushtableinteger(L, "dport", dport);
-    incoming = checkPacketincoming(ip->ip_src, sport, ip->ip_dst, dport);
+    incoming = get_packet_type(ip->ip_src, sport, ip->ip_dst, dport);
     script_pushtableinteger(L, "incoming", incoming);
     script_pushtableinteger(L, "udp", 1);
     if (payload_size > 0) {

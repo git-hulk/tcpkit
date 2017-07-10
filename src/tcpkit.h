@@ -1,14 +1,13 @@
 #ifndef _TCPKIT_H_
 #define _TCPKIT_H_
-
 #define LUA_COMPAT_MODULE
-
 #include <stdint.h>
 #include <netinet/in.h>
-#include "pcap_wrapper.h"
+
 #include "script.h"
 #include "util.h"
 #include "array.h"
+#include "pcap_wrapper.h"
 
 #define VERSION "0.1.0"
 #define DEFAULT_CALLBACK "process_packet"
@@ -37,7 +36,6 @@ struct bandwidth {
     uint64_t last_calc_time;
 };
 
-int is_client_mode();
 struct options *get_options();
 struct lua_State * get_lua_vm();
 struct bandwidth *get_bandwidth();

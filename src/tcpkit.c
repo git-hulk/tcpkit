@@ -9,7 +9,6 @@
 #include "bandwidth.h"
 #include "local_addresses.h"
 
-
 struct server {
     char *filter;
     lua_State *vm;
@@ -34,12 +33,6 @@ struct bandwidth *
 get_bandwidth()
 {
     return srv.bw;
-}
-
-int
-is_client_mode ()
-{
-    return srv.opts->server == NULL ? 0 : 1;
 }
 
 static void
