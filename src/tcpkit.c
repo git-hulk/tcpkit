@@ -146,7 +146,13 @@ main(int argc, char **argv)
     set_log_file(opts->log_file);
     vm = script_create_vm(opts->script);
     if (!vm && !opts->is_calc_mode) {
-        // TODO: log error message
+        logger(ERROR, "Failed to create lua vm");
+        exit(0);
+    }
+    if (!opts->is_calc_mode &&
+        !script_is_func_exists(vm, DEFAULT_CALLBACK)) {
+        logger(ERROR, "Function process_packet was not found");
+        exit(0);
     }
     local_addrs = get_local_addresses(opts->local_addresses);
     if(array_used(local_addrs) <= 0) {

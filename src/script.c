@@ -54,14 +54,13 @@ script_create_vm(const char *filename) {
     vm  = luaL_newstate();
     luaL_openlibs(vm);
     lua_loadlib(vm, "cjson", luaopen_cjson);
-
     if(filename && access(filename, R_OK) == 0) {
         ret = luaL_dofile(vm, filename);
     } else {
-        char *chunk = "\
+        char *chunk = " \
         function process_packet(item) \
             if item.len > 0 then \
-                local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec)..'.'..item.tv_usec\
+                local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec)..'.'..item.tv_usec \
                 local network_str = item.src .. ':' .. item.sport .. '=>' .. item.dst .. ':' .. item.dport \
                 print(time_str, network_str, item.len, item.payload) \
             end \
@@ -69,15 +68,7 @@ script_create_vm(const char *filename) {
         ";
         ret = luaL_dostring(vm, chunk);
     }
-    if (ret != 0) { // load script file or chunk failed
-        logger(ERROR,"%s", lua_tostring(vm, -1));
-        return NULL;
-    }
-    if (!script_is_func_exists(vm, DEFAULT_CALLBACK)) {
-        logger(ERROR,"%s\n", "function process_packet was not found");
-        return NULL;
-    }
-    return vm;
+    return !ret ? vm : NULL;
 }
 
 void
