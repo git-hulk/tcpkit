@@ -88,37 +88,6 @@ parse_options(int argc, char **argv) {
     return opts;
 }
 
-static lua_State *
-create_lua_vm(const char *filename) {
-    int ret;
-    lua_State *vm;
-
-    vm = script_init_vm();
-    if(filename && access(filename, R_OK) == 0) {
-        ret = luaL_dofile(vm, filename);
-    } else {
-        char *chunk = "\
-        function process_packet(item) \
-            if item.len > 0 then \
-                local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec)..'.'..item.tv_usec\
-                local network_str = item.src .. ':' .. item.sport .. '=>' .. item.dst .. ':' .. item.dport \
-                print(time_str, network_str, item.len, item.payload) \
-            end \
-        end \
-        ";
-        ret = luaL_dostring(vm, chunk);
-    }
-    if (!ret) { // load script file or chunk succ
-        if (!script_check_func_exists(vm, DEFAULT_CALLBACK)) {
-            logger(ERROR,"%s\n", "function process_packet was not found");
-            return NULL;
-        }
-        return vm;
-    }
-    logger(ERROR,"%s", lua_tostring(vm, -1));
-    return NULL;
-}
-
 static char *
 create_filter(struct options *opts) {
     char *protocol = "", *filter;
@@ -175,7 +144,7 @@ main(int argc, char **argv)
         exit(0);
     }
     set_log_file(opts->log_file);
-    vm = create_lua_vm(opts->script);
+    vm = script_create_vm(opts->script);
     if (!vm && !opts->is_calc_mode) {
         // TODO: log error message
     }
