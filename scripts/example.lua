@@ -11,7 +11,7 @@ function process_packet(item)
     -- item.seq
     -- item.ack
     -- item.flags
-    if item.len >= 0 then
+    if item.len > 0 then
         local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..item.tv_usec
         local network_str = item.src .. ":" .. item.sport .. "=>" .. item.dst .. ":" .. item.dport
         print(time_str, network_str, item.len, item.payload)

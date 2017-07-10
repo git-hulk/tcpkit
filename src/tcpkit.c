@@ -99,19 +99,24 @@ create_lua_vm(const char *filename) {
     } else {
         char *chunk = "\
         function process_packet(item) \
-            if item.len >= 0 then \
-            local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec)..'.'..item.tv_usec\
-            local network_str = item.src .. ':' .. item.sport .. '=>' .. item.dst .. ':' .. item.dport \
-            print(time_str, network_str, item.len, item.payload) \
+            if item.len > 0 then \
+                local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec)..'.'..item.tv_usec\
+                local network_str = item.src .. ':' .. item.sport .. '=>' .. item.dst .. ':' .. item.dport \
+                print(time_str, network_str, item.len, item.payload) \
             end \
         end \
         ";
         ret = luaL_dostring(vm, chunk);
     }
-    if (ret != 0) {
-        logger(ERROR,"%s", lua_tostring(vm, -1));
+    if (!ret) { // load script file or chunk succ
+        if (!script_check_func_exists(vm, DEFAULT_CALLBACK)) {
+            logger(ERROR,"%s\n", "function process_packet was not found");
+            return NULL;
+        }
+        return vm;
     }
-    return vm;
+    logger(ERROR,"%s", lua_tostring(vm, -1));
+    return NULL;
 }
 
 static char *
