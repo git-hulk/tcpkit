@@ -20,6 +20,7 @@ struct options {
     int is_usage;
     int show_version;
     int is_calc_mode;
+    int is_client_mode;
     char *server;
     char *device;
     char *script;

@@ -38,14 +38,14 @@ get_bandwidth()
 static void
 usage(char *prog)
 {
-    fprintf(stderr, "%s is a tool to capature tcp packets, and you can analyze packets with lua\n", prog);
+    fprintf(stderr, "%s is a tool to capature the tcp packets, and analyze the packets with lua\n", prog);
     fprintf(stderr, "\t-s server ip\n");
     fprintf(stderr, "\t-p port\n");
     fprintf(stderr, "\t-i device\n");
     fprintf(stderr, "\t-r offline file\n");
     fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
     fprintf(stderr, "\t-l local address\n");
-    fprintf(stderr, "\t-C calculate bandwidth mode\n");
+    //fprintf(stderr, "\t-C calculate bandwidth mode\n");
     fprintf(stderr, "\t-d duration, take effect when -C is set\n");
     fprintf(stderr, "\t-f log file\n");
     fprintf(stderr, "\t-t only tcp\n");
@@ -60,14 +60,14 @@ parse_options(int argc, char **argv) {
     struct options *opts;
 
     opts = calloc(1, sizeof(*opts));
-    while((ch = getopt(argc, argv, "s:p:i:S:Cd:l:r:uthv")) != -1) {
+    while((ch = getopt(argc, argv, "s:p:i:S:d:l:r:uthv")) != -1) {
         switch(ch) {
             case 's': opts->server = strdup(optarg); break;
             case 'r': opts->offline_file = strdup(optarg); break;
             case 'p': opts->port= atoi(optarg); break;
             case 'i': opts->device = strdup(optarg); break;
             case 'S': opts->script = strdup(optarg); break;
-            case 'C': opts->is_calc_mode = 1; break;
+            //case 'C': opts->is_calc_mode = 1; break;
             case 'd': opts->duration = atoi(optarg); break;
             case 't': opts->tcp = 1; break;
             case 'u': opts->udp = 1; break;
@@ -78,6 +78,7 @@ parse_options(int argc, char **argv) {
         }
     }
     opts->device = opts->device ? opts->device : strdup("any");
+    opts->is_client_mode = opts->server != NULL;
     return opts;
 }
 
