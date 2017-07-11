@@ -27,7 +27,7 @@ static int
 get_packet_type(struct in_addr src, int sport, struct in_addr dst, int dport) {
 	struct options *opts = get_options();
     if (is_local_address(dst) && is_local_address(src)) {
-        return is_client_mode(opts) ? dport == opts->port : sport == opts->port;
+        return is_client_mode(opts) ? sport == opts->port : dport == opts->port;
     }
     return is_local_address(dst);
 }
