@@ -2,18 +2,9 @@
 #define _PCAP_WRAPPER_H_
 
 #include <pcap.h>
-#define CAPTURE_LENGTH 65535
-#define READ_TIMEOUT 100 // ms
 
-typedef struct {
-    pcap_t *pcap;
-    bpf_u_int32 mask;
-    bpf_u_int32 net;
-} pcap_wrapper;
-
-pcap_wrapper* pw_create(char *dev);
-pcap_wrapper* pw_create_offline(const char *filename);
-void pw_release (pcap_wrapper* pw);
-int pcap_set_filter (pcap_wrapper* pw, char *filter);
-int core_loop(pcap_wrapper *pw, char *filter, pcap_handler handler); 
+pcap_t* open_pcap_by_device(const char *dev, char *errbuf);
+pcap_t* open_pcap_by_offline(const char *filename, char *buf);
+int core_loop(pcap_t *pcap, const char *filter, pcap_handler handler);
+void close_pcap (pcap_t* pcap);
 #endif

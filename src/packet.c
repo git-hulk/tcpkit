@@ -1,9 +1,10 @@
+#include <stdlib.h>
+#include <string.h>
+
 #include "packet.h"
 #include "tcpkit.h"
 #include "util.h"
 #include "local_addresses.h"
-#include <stdlib.h>
-#include <string.h>
 #include "bandwidth.h"
 
 #define NULL_HDRLEN 4
@@ -170,7 +171,7 @@ process_packet(unsigned char *user, const struct pcap_pkthdr *header,
     const struct sll_header *sll;
     const struct ether_header *ether_header;
 
-    switch (pcap_datalink(((pcap_wrapper *)user)->pcap)) {
+    switch (pcap_datalink((pcap_t*)user)) {
     case DLT_NULL:
         ip = (struct ip *)(packet + NULL_HDRLEN); // BSD loopback
         break;

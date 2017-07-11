@@ -123,10 +123,11 @@ is_local_address(struct in_addr addr) {
 int
 main(int argc, char **argv)
 {
+    pcap_t *sniffer;
     lua_State *vm;
     struct options *opts;
     struct array *local_addrs;
-    pcap_wrapper *wrapper;
+    char errbuf[PCAP_ERRBUF_SIZE];
 
     opts = parse_options(argc, argv);
     if(opts->is_usage) {
@@ -138,11 +139,15 @@ main(int argc, char **argv)
         exit(0);
     }
     set_log_file(opts->log_file);
+    srv.opts = opts;
+
     vm = script_create_vm(opts->script);
     if (!vm && !opts->is_calc_mode) {
         logger(ERROR, "Failed to create lua vm");
         exit(0);
     }
+    srv.vm = vm;
+
     if (!opts->is_calc_mode &&
         !script_is_func_exists(vm, DEFAULT_CALLBACK)) {
         logger(ERROR, "Function process_packet was not found");
@@ -153,26 +158,24 @@ main(int argc, char **argv)
         logger(ERROR, "You must run with sudo, or use -l option to set local address\n");
         exit(0);
     }
+    srv.local_addrs = local_addrs;
+
     if (opts->offline_file) {
-        wrapper = pw_create_offline(opts->offline_file);
+        sniffer = open_pcap_by_offline(opts->offline_file, errbuf);
     } else {
-        wrapper = pw_create(opts->device);
+        sniffer = open_pcap_by_device(opts->device, errbuf);
     }
-    if (!wrapper) {
-        logger(ERROR, "You must assign device use -i and swith to root\n");
+    if (!sniffer) {
+        logger(ERROR, "Failed to init tcpkit, err %s\n", errbuf);
         exit(0);
     }
-
-    srv.vm = vm;
-    srv.opts = opts;
-    srv.local_addrs = local_addrs;
     srv.filter = create_filter(opts);
-    if(core_loop(wrapper, srv.filter, process_packet)  == -1) {
-        logger(ERROR, "Start core loop failed, err %s\n", pcap_geterr(wrapper->pcap));
+    logger(INFO, "Setup tcpkit on device %s with filter[%s ]\n", opts->device, srv.filter);
+    if(core_loop(sniffer, srv.filter, process_packet)  == -1) {
+        logger(ERROR, "Failed to start tcpkit, err %s\n", pcap_geterr(sniffer));
     }
-
     // FIXME: free options
-    pw_release(wrapper);
+    close_pcap(sniffer);
     script_release(srv.vm);
     return 0;
 }
