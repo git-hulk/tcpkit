@@ -21,6 +21,7 @@ struct tcp_packet {
     uint16_t dport; // destination port
     unsigned int seq;
     unsigned int ack;
+    uint8_t direct; // 1 = incoming, 0 = outgoing
 
     unsigned int payload_size;
     char *payload;
@@ -34,6 +35,7 @@ struct udp_packet {
     // UDP
     uint16_t sport; // source port
     uint16_t dport; // destination port
+    uint8_t direct; // 1 = incoming, 0 = outgoing
 
     unsigned int payload_size;
     char *payload;
