@@ -25,191 +25,168 @@ is_client_mode(struct options *opts) {
 // 0 for outgoing
 static int
 get_packet_type(struct in_addr src, int sport, struct in_addr dst, int dport) {
-	struct options *opts;
-
-    opts = get_options();
+	struct options *opts = get_options();
     if (is_local_address(dst) && is_local_address(src)) {
-        return is_client_mode(opts) ? sport == opts->port : dport == opts->port;
+        return is_client_mode(opts) ? dport == opts->port : sport == opts->port;
     }
     return is_local_address(dst);
 }
 
+static struct tcp_packet *
+create_tcp_packet(const struct ip *ip, const struct timeval *tv) {
+    struct tcphdr *tcphdr;
+    struct tcp_packet *packet;
+    unsigned int size, iphdr_size, tcphdr_size;
+
+    packet = malloc(sizeof(*packet));
+    packet->tv = tv;
+    iphdr_size = IP_HL(ip)*4;
+    tcphdr = (struct tcphdr *)((unsigned char *)ip + iphdr_size);
+    size = htons(ip->ip_len);
+    packet->src = ip->ip_src;
+    packet->dst = ip->ip_dst;
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
+    packet->seq = htonl(tcphdr->th_seq);
+    packet->ack = htonl(tcphdr->th_ack);
+    packet->flags = tcphdr->th_flags;
+    packet->sport = ntohs(tcphdr->th_sport);
+    packet->dport = ntohs(tcphdr->th_dport);
+    tcphdr_size = tcphdr->th_off * 4;
+#else
+    packet->seq = htonl(tcphdr->seq);
+    packet->ack = htonl(tcphdr->ack_seq);
+    packet->flags = tcphdr->fin | (tcphdr->syn<<1) | (tcphdr->rst<<2) | (tcphdr->psh<<3);
+    if (tcphdr->ack) packet->flags |= 0x10;
+    packet->sport = ntohs(tcphdr->source);
+    packet->dport = ntohs(tcphdr->dest);
+    tcphdr_size = tcphdr->doff * 4;
+#endif
+    packet->payload_size = size - iphdr_size - tcphdr_size;
+    packet->payload = (char *)tcphdr + tcphdr_size;
+    return packet;
+}
+
 static void
-push_params(const struct ip *ip, const struct timeval *tv)
-{
-    int tcp_hdr_size, incoming;
-    struct tcphdr *tcp;
-    uint8_t flags;
-    uint16_t sport, dport;
-    unsigned int payload_size, size, iphdr_size, seq, ack;
+push_params(struct tcp_packet *packet) {
+    int incoming;
+    lua_State *vm;
+    struct options *opts;
+
+    opts = get_options();
+    incoming = get_packet_type(packet->src, packet->sport, packet->dst, packet->dport);
+    vm = get_lua_vm();
+    lua_newtable(vm);
+    script_pushtableinteger(vm, "tv_sec", packet->tv->tv_sec);
+    script_pushtableinteger(vm, "tv_usec", packet->tv->tv_usec);
+    script_pushtableinteger(vm, "incoming", incoming);
+    script_pushtableinteger(vm, "len" , packet->payload_size);
+    script_pushtablestring(vm,  "src", inet_ntoa(packet->src));
+    script_pushtablestring(vm,  "dst", inet_ntoa(packet->dst));
+    script_pushtableinteger(vm, "sport", packet->sport);
+    script_pushtableinteger(vm, "dport", packet->dport);
+    script_pushtableinteger(vm, "seq", packet->seq);
+    script_pushtableinteger(vm, "ack", packet->ack);
+    script_pushtableinteger(vm, "flags", packet->flags);
+    script_pushtableinteger(vm, "is_client", is_client_mode(opts));
+    script_pushtableinteger(vm, "udp", 0);
+    if (packet->payload_size > 0) {
+        script_pushtablelstring(vm, "payload", packet->payload, packet->payload_size);
+    }
+}
+
+static struct udp_packet *
+create_udp_packet(const struct ip *ip, const struct timeval *tv) {
+    struct udp_packet *packet;
+    struct udphdr *udphdr;
+    int iphdr_size;
 
     iphdr_size = IP_HL(ip)*4;
-    tcp = (struct tcphdr *) ((unsigned char *) ip + iphdr_size);
-    size = htons(ip->ip_len);
+    udphdr = (struct udphdr *)((unsigned char *)ip + iphdr_size);
 
+    packet = malloc(sizeof(*packet));
+    packet->tv = tv;
+    packet->src = ip->ip_src;
+    packet->dst = ip->ip_dst;
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
-    seq = htonl(tcp->th_seq);
-    ack = htonl(tcp->th_ack);
-    flags = tcp->th_flags;
-    sport = ntohs(tcp->th_sport);
-    dport = ntohs(tcp->th_dport);
-    tcp_hdr_size = tcp->th_off * 4;
-    payload_size = size - iphdr_size - tcp->th_off * 4;
+    packet->sport = ntohs(udphdr->uh_sport);
+    packet->dport = ntohs(udphdr->uh_dport);
+    packet->payload_size = ntohs(udphdr->uh_ulen);
 #else
-    seq = htonl(tcp->seq);
-    ack = htonl(tcp->ack_seq);
-    flags = tcp->fin | (tcp->syn<<1) | (tcp->rst<<2) | (tcp->psh<<3);
-    if (tcp->ack) flags |= 0x10; 
-    if (tcp->urg) flags |= 0x20; 
-    sport = ntohs(tcp->source);
-    dport = ntohs(tcp->dest);
-    tcp_hdr_size = tcp->doff * 4;
-    payload_size = size - iphdr_size - tcp->doff * 4;
+    packet->sport = ntohs(udphdr->source);
+    packet->dport = ntohs(udphdr->dest);
+    packet->payload_size = ntohs(udphdr->len);
 #endif
-    incoming = get_packet_type(ip->ip_src, sport, ip->ip_dst, dport);
-
-    struct options *opts = get_options();
-    lua_State *L = get_lua_vm();
-    lua_newtable(L);
-    script_pushtableinteger(L, "tv_sec",  tv->tv_sec);
-    script_pushtableinteger(L, "tv_usec", tv->tv_usec);
-    script_pushtableinteger(L, "incoming", incoming);
-    script_pushtableinteger(L, "len" , payload_size);
-    script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
-    script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
-    script_pushtableinteger(L, "sport", sport);
-    script_pushtableinteger(L, "dport", dport);
-    script_pushtableinteger(L, "seq", seq);
-    script_pushtableinteger(L, "ack", ack);
-    script_pushtableinteger(L, "flags", flags);
-    script_pushtableinteger(L, "is_client", is_client_mode(opts));
-    script_pushtableinteger(L, "udp", 0);
-
-    if (payload_size > 0) {
-        // -----------+-----------+----------+-----....-----+
-        // | ETHER    |  IP       | TCP      | payload      |
-        // -----------+-----------+----------+--------------+
-        script_pushtablelstring(L, "payload", (char *)tcp + tcp_hdr_size, payload_size);
-    }
+    packet->payload = (char *)udphdr + sizeof(struct udphdr);
+    return packet;
 }
 
 // handle udp packet
-static void udp_packet_callback(const struct ip *ip, const struct timeval *tv) {
-    int incoming, sport, dport;
-    lua_State *L;
-    struct udphdr *udp;
-    unsigned int iphdr_size, payload_size;
+static void udp_packet_callback(const struct udp_packet *packet) {
+    int incoming;
+    lua_State *vm;
 
-    L = get_lua_vm();
-    if (!L) logger(ERROR, "Lua vm didn't initialed.");
-    lua_getglobal(L, DEFAULT_CALLBACK);
-    lua_newtable(L);
-
-    iphdr_size = IP_HL(ip)*4;
-    udp = (struct udphdr *) ((unsigned char *) ip + iphdr_size);
-    script_pushtableinteger(L, "tv_sec",  tv->tv_sec);
-    script_pushtableinteger(L, "tv_usec", tv->tv_usec);
-
-    // udp
-
-#if defined(__FAVOR_BSD) || defined(__APPLE__)
-    sport = ntohs(udp->uh_sport);
-    dport = ntohs(udp->uh_dport);
-    payload_size = ntohs(udp->uh_ulen);
-#else
-    sport = ntohs(udp->source);
-    dport = ntohs(udp->dest);
-    payload_size = ntohs(udp->len);
-#endif
-    script_pushtableinteger(L, "len", payload_size);
-    script_pushtablestring(L,  "src", inet_ntoa(ip->ip_src));
-    script_pushtablestring(L,  "dst", inet_ntoa(ip->ip_dst));
-    script_pushtableinteger(L, "sport", sport);
-    script_pushtableinteger(L, "dport", dport);
-    incoming = get_packet_type(ip->ip_src, sport, ip->ip_dst, dport);
-    script_pushtableinteger(L, "incoming", incoming);
-    script_pushtableinteger(L, "udp", 1);
-    if (payload_size > 0) {
+    vm = get_lua_vm();
+    lua_getglobal(vm, DEFAULT_CALLBACK);
+    lua_newtable(vm);
+    script_pushtableinteger(vm, "tv_sec",  packet->tv->tv_sec);
+    script_pushtableinteger(vm, "tv_usec", packet->tv->tv_usec);
+    script_pushtableinteger(vm, "len", packet->payload_size);
+    script_pushtablestring(vm,  "src", inet_ntoa(packet->src));
+    script_pushtablestring(vm,  "dst", inet_ntoa(packet->dst));
+    script_pushtableinteger(vm, "sport", packet->sport);
+    script_pushtableinteger(vm, "dport", packet->dport);
+    incoming = get_packet_type(packet->src, packet->sport, packet->dst, packet->dport);
+    script_pushtableinteger(vm, "incoming", incoming);
+    script_pushtableinteger(vm, "udp", 1);
+    if (packet->payload_size > 0) {
         // udp header always = 8 bytes
-        script_pushtablelstring(L, "payload", (char *)udp + sizeof(struct udphdr), payload_size);
+        script_pushtablelstring(vm, "payload", packet->payload, packet->payload_size);
     }
-    if (lua_pcall(L, 1, 1, 0) != 0) {
-        logger(ERROR, "%s", lua_tostring(L, -1));
+    if (lua_pcall(vm, 1, 1, 0) != 0) {
+        logger(ERROR, "%s", lua_tostring(vm, -1));
     }
-    script_need_gc(L); // check whether need gc.
-    lua_tonumber(L, -1);
-    lua_pop(L,-1);
-}
-
-// handle tcp packet
-static void tcp_packet_callback(const struct ip *ip, const struct timeval *tv) {
-    lua_State *L;
-
-    L = get_lua_vm();
-    if (!L) logger(ERROR, "Lua vm didn't initialed.");
-
-    lua_getglobal(L, DEFAULT_CALLBACK);
-    push_params(ip, tv);
-    if (lua_pcall(L, 1, 1, 0) != 0) {
-        logger(ERROR, "%s", lua_tostring(L, -1));
-    }
-    script_need_gc(L); // check whether need gc.
-    lua_tonumber(L, -1);
-    lua_pop(L,-1);
+    script_need_gc(vm);
+    lua_tonumber(vm, -1);
+    lua_pop(vm,-1);
 }
 
 static void
-calc_bandwidth(const struct ip *ip, const struct timeval *tv)
-{ 
-    struct bandwidth *bw;
-
-    bw = get_bandwidth();
-    need_report_bandwidth();
-    if (is_local_address(ip->ip_dst)) {
-        bw->in_bytes += htons(ip->ip_len);        
-        bw->in_packets += 1;
-    } else {
-        bw->out_bytes += htons(ip->ip_len);       
-        bw->out_packets += 1;
+tcp_packet_callback(struct tcp_packet *packet) {
+    lua_State *vm;
+    vm = get_lua_vm();
+    lua_getglobal(vm, DEFAULT_CALLBACK);
+    push_params(packet);
+    if (lua_pcall(vm, 1, 1, 0) != 0) {
+        logger(ERROR, "%s", lua_tostring(vm, -1));
     }
+    script_need_gc(vm);
+    lua_tonumber(vm, -1);
+    lua_pop(vm, -1);
 }
 
-static int
-process_ip_packet(const struct ip *ip, const struct timeval *tv)
-{
-    struct options *opts;
+static void
+process_ip_packet(const struct ip *ip, const struct timeval *tv) {
     switch (ip->ip_p) {
         case IPPROTO_TCP:
-            opts = get_options();
-            if (opts->is_calc_mode) {
-                calc_bandwidth(ip, tv);
-            } else {
-                tcp_packet_callback(ip, tv);
-            }
+            tcp_packet_callback(create_tcp_packet(ip, tv));
             break;
-         case IPPROTO_UDP:
-            udp_packet_callback(ip, tv);
+        case IPPROTO_UDP:
+            udp_packet_callback(create_udp_packet(ip, tv));
             break;
-
     }
-    return 0;
 }
 
 void
 process_packet(unsigned char *user, const struct pcap_pkthdr *header,
-                const unsigned char *packet)
-{
-    const struct sll_header *sll;
-    const struct ether_header *ether_header;
+                const unsigned char *packet) {
     const struct ip *ip;
     unsigned short packet_type;
-    pcap_wrapper *pw;
+    const struct sll_header *sll;
+    const struct ether_header *ether_header;
 
-    pw  = (pcap_wrapper *) user;
-    switch (pcap_datalink(pw->pcap)) {
+    switch (pcap_datalink(((pcap_wrapper *)user)->pcap)) {
     case DLT_NULL:
-        /* BSD loopback */
-        ip = (struct ip *)(packet + NULL_HDRLEN);
+        ip = (struct ip *)(packet + NULL_HDRLEN); // BSD loopback
         break;
     case DLT_LINUX_SLL:
         sll = (struct sll_header *) packet;
@@ -222,10 +199,9 @@ process_packet(unsigned char *user, const struct pcap_pkthdr *header,
         ip = (const struct ip *) (packet + sizeof(struct ether_header));
         break;
     case DLT_RAW:
-        packet_type = ETHERTYPE_IP; //This is raw ip
+        packet_type = ETHERTYPE_IP; //Raw ip
         ip = (const struct ip *) packet;
         break;
-
      default: return; 
     }
     

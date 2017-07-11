@@ -45,7 +45,7 @@ get_addresses_from_device(void) {
     }
     addrs = array_alloc(sizeof(struct in_addr), 10);
     for (dev = devlist; dev; dev = dev->next) {
-        if (dev->flags & PCAP_IF_LOOPBACK) continue;
+        //if (dev->flags & PCAP_IF_LOOPBACK) continue;
         for (addr = dev->addresses; addr; addr = addr->next) {
             if (!addr->addr && !addr->dstaddr) continue;
             real_addr = addr->addr ? addr->addr : addr->dstaddr;

@@ -34,3 +34,18 @@ void need_report_bandwidth()
         bw->in_packets = bw->out_packets = 0;
     }
 }
+
+void
+calc_bandwidth(const struct ip *ip, const struct timeval *tv) {
+    struct bandwidth *bw;
+
+    bw = get_bandwidth();
+    need_report_bandwidth();
+    if (is_local_address(ip->ip_dst)) {
+        bw->in_bytes += htons(ip->ip_len);
+        bw->in_packets += 1;
+    } else {
+        bw->out_bytes += htons(ip->ip_len);
+        bw->out_packets += 1;
+    }
+}
