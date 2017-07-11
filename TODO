@@ -1,1 +1,2 @@
-1. 根据 OPTION 定义过滤包类型, 比如只给包内容, 只给包头, 忽略没有数据的包(sync,fin, rst), 所有数据包
+* IMPROVEMENT: add unittest case 
+* IMPOROVMENT: support to catch all devices
