@@ -2,10 +2,10 @@
 #include <string.h>
 
 #include "packet.h"
+#include "stats.h"
 #include "tcpkit.h"
 #include "util.h"
 #include "local_addresses.h"
-#include "bandwidth.h"
 
 #define NULL_HDRLEN 4
 #ifdef _IP_VHL
@@ -136,7 +136,7 @@ push_udp_packet(const struct udp_packet *packet) {
 }
 
 static void
-push_packet_to_user(void *packet, int tcp) {
+push_packet_to_vm(void *packet, int tcp) {
     lua_State *vm;
     vm = get_lua_vm();
     lua_getglobal(vm, DEFAULT_CALLBACK);
@@ -145,6 +145,7 @@ push_packet_to_user(void *packet, int tcp) {
     } else {
         push_udp_packet((struct udp_packet*)packet);
     }
+    free(packet);
     if (lua_pcall(vm, 1, 1, 0) != 0) {
         logger(ERROR, "%s", lua_tostring(vm, -1));
     }
@@ -154,44 +155,78 @@ push_packet_to_user(void *packet, int tcp) {
 }
 
 static void
-process_ip_packet(const struct ip *ip, const struct timeval *tv) {
+push_packet_to_user(const struct ip *ip, const struct timeval *tv) {
+    struct tcp_packet *tp;
+    struct udp_packet *up;
+    struct stats *stats = get_stats();
+    //why add 18, Dst Mac(6)+Src Mac(6)+Length(2)+Fcs(4)
+    int size = htons(ip->ip_len) + 18;
     switch (ip->ip_p) {
         case IPPROTO_TCP:
-            push_packet_to_user(create_tcp_packet(ip, tv), 1); break;
+            tp = create_tcp_packet(ip, tv);
+            update_stats(stats, tp->direct, size);
+            push_packet_to_vm(tp, 1);
+            break;
         case IPPROTO_UDP:
-            push_packet_to_user(create_udp_packet(ip, tv), 0); break;
+            up = create_udp_packet(ip, tv);
+            update_stats(stats, up->direct, size);
+            push_packet_to_vm(up, 0);
+            break;
+    }
+}
+
+const struct ip*
+extract_ip_packet(int link_type, const unsigned char *packet) {
+    const struct sll_header *sll;
+    const struct ether_header *ether_header;
+
+    switch (link_type) {
+    case DLT_NULL:
+         return (struct ip *)(packet + NULL_HDRLEN); // BSD loopback
+    case DLT_LINUX_SLL:
+        sll = (struct sll_header *) packet;
+        return (const struct ip *)(packet + sizeof(struct sll_header));
+    case DLT_EN10MB:
+        ether_header = (struct ether_header *) packet;
+        return (const struct ip *)(packet + sizeof(struct ether_header));
+    case DLT_RAW:
+        return (const struct ip *)packet;
+     default:
+        return NULL; 
     }
 }
 
 void
-process_packet(unsigned char *user, const struct pcap_pkthdr *header,
+stats_packet_handler(unsigned char *user, const struct pcap_pkthdr *header,
                 const unsigned char *packet) {
-    const struct ip *ip;
-    unsigned short packet_type;
-    const struct sll_header *sll;
-    const struct ether_header *ether_header;
+    int size, link_type;
+    struct tcp_packet *tp;
+    struct udp_packet *up;
+    const struct ip *ip_packet;
+    struct stats *stats = get_stats();
 
-    switch (pcap_datalink((pcap_t*)user)) {
-    case DLT_NULL:
-        ip = (struct ip *)(packet + NULL_HDRLEN); // BSD loopback
-        break;
-    case DLT_LINUX_SLL:
-        sll = (struct sll_header *) packet;
-        packet_type = ntohs(sll->sll_protocol);
-        ip = (const struct ip *) (packet + sizeof(struct sll_header));
-        break;
-    case DLT_EN10MB:
-        ether_header = (struct ether_header *) packet;
-        packet_type = ntohs(ether_header->ether_type);
-        ip = (const struct ip *) (packet + sizeof(struct ether_header));
-        break;
-    case DLT_RAW:
-        packet_type = ETHERTYPE_IP; //Raw ip
-        ip = (const struct ip *) packet;
-        break;
-     default: return; 
+    link_type= pcap_datalink((pcap_t*)user);
+    ip_packet = extract_ip_packet(link_type, packet);
+    size = htons(ip_packet->ip_len) + 18;
+    switch (ip_packet->ip_p) {
+        case IPPROTO_TCP:
+            tp = create_tcp_packet(ip_packet, &header->ts);
+            update_stats(stats, tp->direct, size);
+            break;
+        case IPPROTO_UDP:
+            up = create_udp_packet(ip_packet, &header->ts);
+            update_stats(stats, up->direct, size);
+            break;
     }
-    
-    packet_type = 0;
-    process_ip_packet(ip, &header->ts); 
+}
+
+void
+analyze_packet_handler(unsigned char *user, const struct pcap_pkthdr *header,
+                const unsigned char *packet) {
+    int link_type;
+    const struct ip *ip_packet;
+
+    link_type= pcap_datalink((pcap_t*)user);
+    ip_packet = extract_ip_packet(link_type, packet);
+    push_packet_to_user(ip_packet, &header->ts); 
 }

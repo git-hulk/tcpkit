@@ -3,17 +3,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "tcpkit.h"
 #include "packet.h"
-#include "bandwidth.h"
+#include "stats.h"
 #include "local_addresses.h"
 
 struct server {
     char *filter;
     lua_State *vm;
     struct options *opts;
-    struct bandwidth *bw;
+    struct stats *stats;
     struct array *local_addrs;
 };
 
@@ -29,24 +30,39 @@ get_options() {
     return srv.opts;
 }
 
-struct bandwidth *
-get_bandwidth()
-{
-    return srv.bw;
+struct stats*
+get_stats() {
+    return srv.stats;
+}
+
+pcap_handler
+get_live_handler(struct options *opts) {
+    if (opts->duration > 0) {// only print stats
+        return stats_packet_handler;
+    }
+    return analyze_packet_handler;
+}
+
+void* print_stats_routine(void *arg) {
+    struct stats *stats= get_stats();
+    while(1) {
+        need_print_stats(stats, (int) arg);
+        usleep(100000); // wake up every 100 millseconds
+    };
+    return NULL;
 }
 
 static void
-usage(char *prog)
-{
+usage(char *prog) {
     fprintf(stderr, "%s is a tool to capature the tcp packets, and analyze the packets with lua\n", prog);
     fprintf(stderr, "\t-s server ip\n");
     fprintf(stderr, "\t-p port\n");
     fprintf(stderr, "\t-i device\n");
     fprintf(stderr, "\t-r offline file\n");
+    fprintf(stderr, "\t-w write the raw packets to file\n");
     fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
     fprintf(stderr, "\t-l local address\n");
-    //fprintf(stderr, "\t-C calculate bandwidth mode\n");
-    fprintf(stderr, "\t-d duration, take effect when -C is set\n");
+    fprintf(stderr, "\t-d interval to print stats, unit is second \n");
     fprintf(stderr, "\t-f log file\n");
     fprintf(stderr, "\t-t only tcp\n");
     fprintf(stderr, "\t-u only udp\n");
@@ -60,14 +76,14 @@ parse_options(int argc, char **argv) {
     struct options *opts;
 
     opts = calloc(1, sizeof(*opts));
-    while((ch = getopt(argc, argv, "s:p:i:S:d:l:r:uthv")) != -1) {
+    while((ch = getopt(argc, argv, "s:p:i:S:d:l:r:w:uthv")) != -1) {
         switch(ch) {
             case 's': opts->server = strdup(optarg); break;
             case 'r': opts->offline_file = strdup(optarg); break;
+            case 'w': opts->save_file = strdup(optarg); break;
             case 'p': opts->port= atoi(optarg); break;
             case 'i': opts->device = strdup(optarg); break;
             case 'S': opts->script = strdup(optarg); break;
-            //case 'C': opts->is_calc_mode = 1; break;
             case 'd': opts->duration = atoi(optarg); break;
             case 't': opts->tcp = 1; break;
             case 'u': opts->udp = 1; break;
@@ -84,8 +100,8 @@ parse_options(int argc, char **argv) {
 
 static char *
 create_filter(struct options *opts) {
-    char *protocol = "", *filter;
     int n;
+    char *protocol = "", *filter;
 
     n = 128; // it seems like 128 is enough for filter
     filter = malloc(n);
@@ -123,10 +139,13 @@ is_local_address(struct in_addr addr) {
 int
 main(int argc, char **argv)
 {
-    pcap_t *sniffer;
+    int ret;
     lua_State *vm;
+    pcap_t *sniffer;
+    pthread_t stats_tid;
     struct options *opts;
     struct array *local_addrs;
+    pcap_handler handler;
     char errbuf[PCAP_ERRBUF_SIZE];
 
     opts = parse_options(argc, argv);
@@ -148,8 +167,7 @@ main(int argc, char **argv)
     }
     srv.vm = vm;
 
-    if (!opts->is_calc_mode &&
-        !script_is_func_exists(vm, DEFAULT_CALLBACK)) {
+    if (!script_is_func_exists(vm, DEFAULT_CALLBACK)) {
         logger(ERROR, "Function process_packet was not found");
         exit(0);
     }
@@ -159,10 +177,21 @@ main(int argc, char **argv)
         exit(0);
     }
     srv.local_addrs = local_addrs;
+    
+    // setup print stats thread
+    srv.stats = create_stats();
+    if (opts->duration > 0) {
+        ret = pthread_create(&stats_tid, NULL, print_stats_routine, (void*)(long)opts->duration);
+        if (ret != 0) {
+            logger(ERROR, "Fail to create print stats thread, err\n", strerror(errno));
+        }
+    }
 
     if (opts->offline_file) {
+        handler = analyze_packet_handler;
         sniffer = open_pcap_by_offline(opts->offline_file, errbuf);
     } else {
+        handler = get_live_handler(opts);
         sniffer = open_pcap_by_device(opts->device, errbuf);
     }
     if (!sniffer) {
@@ -171,10 +200,11 @@ main(int argc, char **argv)
     }
     srv.filter = create_filter(opts);
     logger(INFO, "Setup tcpkit on device %s with filter[%s ]\n", opts->device, srv.filter);
-    if(core_loop(sniffer, srv.filter, process_packet)  == -1) {
+    if(core_loop(sniffer, srv.filter, handler)  == -1) {
         logger(ERROR, "Failed to start tcpkit, err %s\n", pcap_geterr(sniffer));
     }
     // FIXME: free options
+    // TODO: catch termin's siganl
     close_pcap(sniffer);
     script_release(srv.vm);
     return 0;

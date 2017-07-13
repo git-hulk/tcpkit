@@ -5,7 +5,7 @@
 
 #include "util.h"
 #include "tcpkit.h"
-#include "bandwidth.h"
+#include "stats.h"
 #include "pcap_wrapper.h"
 
 pcap_t*
@@ -52,21 +52,11 @@ close_pcap(pcap_t* pcap) {
 
 int
 core_loop(pcap_t *pcap, const char *filter, pcap_handler handler) {
-    int ret;
     struct bpf_program fp;
-    struct options *opts;
 
     if (!pcap || pcap_compile(pcap, &fp, filter, 0, 1) != 0
         || pcap_setfilter(pcap, &fp) != 0) {
         return -1;
     }
-    opts = get_options();
-    if (!opts->is_calc_mode) {
-        return pcap_loop(pcap, -1, handler, (unsigned char *)pcap);
-    }
-    opts->duration = opts->duration >= 1 ? opts->duration : 30;
-    while((ret = pcap_dispatch(pcap, -1, handler, (unsigned char *)pcap)) >= 0) {
-        need_report_bandwidth();
-    }
-    return ret;
+    return pcap_loop(pcap, -1, handler, (unsigned char *)pcap);
 }

@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -Wall
 CINCLUDES = -I../deps/libpcap/ -I../deps/lua/src
 CLIBS = ../deps/libpcap/libpcap.a ../deps/lua/src/liblua.a
-LOAD_LIBS=-lm -ldl
+LOAD_LIBS=-lm -ldl -lpthread
 
 INSTALL=/usr/bin/install
 INSTALLDIR=/usr/local
@@ -13,7 +13,7 @@ TCPKIT_CC = $(CC) $(CFLAGS) $(CINCLUDES)
 PROG = tcpkit
 
 
-OBJS = local_addresses.o util.o cJSON.o pcap_wrapper.o packet.o script.o tcpkit.o array.o bandwidth.o
+OBJS = local_addresses.o util.o cJSON.o pcap_wrapper.o packet.o script.o tcpkit.o array.o stats.o
 
 all: deps tcpkit
 .PHONY: all

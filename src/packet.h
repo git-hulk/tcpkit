@@ -41,5 +41,6 @@ struct udp_packet {
     char *payload;
 };
 
-void process_packet(unsigned char *user, const struct pcap_pkthdr *header, const unsigned char *packet);
+void analyze_packet_handler(unsigned char *user, const struct pcap_pkthdr *header, const unsigned char *packet);
+void stats_packet_handler(unsigned char *user, const struct pcap_pkthdr *header, const unsigned char *packet);
 #endif

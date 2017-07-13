@@ -27,18 +27,11 @@ struct options {
     char *log_file;
     char *offline_file;
     char *local_addresses;
+    char *save_file;
 };
 
-struct bandwidth {
-    uint64_t in_bytes;
-    uint64_t in_packets;
-    uint64_t out_bytes;
-    uint64_t out_packets;
-    uint64_t last_calc_time;
-};
-
+struct stats *get_stats();
 struct options *get_options();
 struct lua_State * get_lua_vm();
-struct bandwidth *get_bandwidth();
 int is_local_address(struct in_addr addr);
 #endif
