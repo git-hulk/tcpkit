@@ -207,10 +207,12 @@ stats_packet_handler(unsigned char *user, const struct pcap_pkthdr *header,
         case IPPROTO_TCP:
             tp = create_tcp_packet(ip_packet, &header->ts);
             update_stats(stats, tp->direct, size);
+            free(tp);
             break;
         case IPPROTO_UDP:
             up = create_udp_packet(ip_packet, &header->ts);
             update_stats(stats, up->direct, size);
+            free(up);
             break;
     }
 }
