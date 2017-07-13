@@ -44,12 +44,6 @@ open_pcap_by_offline(const char *filename, char *errbuf) {
     return pcap_fopen_offline(fp, errbuf);
 }
 
-void
-close_pcap(pcap_t* pcap) {
-    pcap_breakloop(pcap);
-    pcap_close(pcap);
-}
-
 int
 core_loop(pcap_t *pcap, const char *filter, pcap_handler handler) {
     struct bpf_program fp;

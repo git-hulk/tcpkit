@@ -14,6 +14,7 @@ struct stats *create_stats(void) {
     stats->tx_bytes = 0;
     stats->rx_packets = 0;
     stats->tx_packets = 0;
+    stats->packets = 0;
     stats->last_time = tv.tv_sec * 1000000 + tv.tv_usec;
     return stats;
 }
@@ -53,4 +54,5 @@ update_stats(struct stats *stats, int direction, int size) {
         stats->tx_bytes += size;
         ++stats->tx_packets;
     }
+    ++stats->packets;
 }

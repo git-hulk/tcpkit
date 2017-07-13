@@ -16,6 +16,8 @@ struct server {
     struct options *opts;
     struct stats *stats;
     struct array *local_addrs;
+    pcap_t *sniffer;
+    int stop;
 };
 
 struct server srv;
@@ -136,6 +138,29 @@ is_local_address(struct in_addr addr) {
     return 0;
 }
 
+void
+terminate() {
+    if (!srv.stop) {
+        // FIXME: free options
+        pcap_breakloop(srv.sniffer);
+        script_release(srv.vm);
+        srv.stop = 1;
+    }
+}
+
+void
+signal_handler(int sig) {
+    struct pcap_stat ps;
+    if (sig == SIGINT || sig == SIGTERM) {
+        pcap_stats(srv.sniffer, &ps);
+        fprintf(stderr, "%llu packets captured\n", srv.stats->packets);
+        fprintf(stderr, "%u packets received by filter\n", ps.ps_recv);
+        fprintf(stderr, "%u packets dropped by kernel\n", ps.ps_drop);
+        fprintf(stderr, "%u packet dropped by interface\n", ps.ps_ifdrop);
+        terminate();
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -183,9 +208,12 @@ main(int argc, char **argv)
     if (opts->duration > 0) {
         ret = pthread_create(&stats_tid, NULL, print_stats_routine, (void*)(long)opts->duration);
         if (ret != 0) {
-            logger(ERROR, "Fail to create print stats thread, err\n", strerror(errno));
+            logger(WARN, "Fail to create print stats thread, err\n", strerror(errno));
         }
     }
+    // register signal handler
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
     if (opts->offline_file) {
         handler = analyze_packet_handler;
@@ -198,14 +226,13 @@ main(int argc, char **argv)
         logger(ERROR, "Failed to init tcpkit, err %s\n", errbuf);
         exit(0);
     }
+    srv.sniffer = sniffer;
     srv.filter = create_filter(opts);
     logger(INFO, "Setup tcpkit on device %s with filter[%s ]\n", opts->device, srv.filter);
-    if(core_loop(sniffer, srv.filter, handler)  == -1) {
+    if(core_loop(sniffer, srv.filter, handler) == -1) {
         logger(ERROR, "Failed to start tcpkit, err %s\n", pcap_geterr(sniffer));
     }
-    // FIXME: free options
-    // TODO: catch termin's siganl
-    close_pcap(sniffer);
-    script_release(srv.vm);
+    terminate();
+    pcap_close(sniffer);
     return 0;
 }

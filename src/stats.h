@@ -9,6 +9,7 @@ struct stats {
     uint64_t rx_packets;
     uint64_t tx_bytes;
     uint64_t tx_packets;
+    uint64_t packets;
     uint64_t last_time;
 };
 
