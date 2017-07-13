@@ -46,7 +46,7 @@ get_live_handler(struct options *opts) {
 void* print_stats_routine(void *arg) {
     struct stats *stats= get_stats();
     while(1) {
-        need_print_stats(stats, (int) arg);
+        need_print_stats(stats, (long)arg);
         usleep(100000); // wake up every 100 millseconds
     };
     return NULL;
@@ -113,7 +113,7 @@ create_filter(struct options *opts) {
     } else if (opts->port) {
         n = snprintf(filter, n, "%s port %d", protocol, opts->port);
     } else { // without filter
-        n = snprintf(filter, n, "");
+        n = snprintf(filter, n, " ");
     }
     filter[n] = '\0';
     return filter;

@@ -89,7 +89,7 @@ int speed_human(uint64_t speed, char *buf, int size)
     } else if (speed > KB) {
         n = snprintf(buf, size, "%.2f KB/s", (speed * 1.0)/KB);
     } else {
-        n = snprintf(buf, size, "%llu B/s", speed);
+        n = snprintf(buf, size, "%llu B/s", (unsigned long long)speed);
     }
     buf[n] = '\0';
     return 0;

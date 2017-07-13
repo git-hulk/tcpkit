@@ -177,17 +177,12 @@ push_packet_to_user(const struct ip *ip, const struct timeval *tv) {
 
 const struct ip*
 extract_ip_packet(int link_type, const unsigned char *packet) {
-    const struct sll_header *sll;
-    const struct ether_header *ether_header;
-
     switch (link_type) {
     case DLT_NULL:
          return (struct ip *)(packet + NULL_HDRLEN); // BSD loopback
     case DLT_LINUX_SLL:
-        sll = (struct sll_header *) packet;
         return (const struct ip *)(packet + sizeof(struct sll_header));
     case DLT_EN10MB:
-        ether_header = (struct ether_header *) packet;
         return (const struct ip *)(packet + sizeof(struct ether_header));
     case DLT_RAW:
         return (const struct ip *)packet;
