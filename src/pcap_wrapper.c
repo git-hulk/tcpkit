@@ -45,12 +45,11 @@ open_pcap_by_offline(const char *filename, char *errbuf) {
 }
 
 int
-core_loop(pcap_t *pcap, const char *filter, pcap_handler handler) {
+core_loop(pcap_t *pcap, const char *filter, pcap_handler handler, void *private) {
     struct bpf_program fp;
-
     if (!pcap || pcap_compile(pcap, &fp, filter, 0, 1) != 0
         || pcap_setfilter(pcap, &fp) != 0) {
         return -1;
     }
-    return pcap_loop(pcap, -1, handler, (unsigned char *)pcap);
+    return pcap_loop(pcap, -1, handler, (unsigned char *)private);
 }

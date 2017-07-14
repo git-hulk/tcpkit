@@ -30,8 +30,14 @@ struct options {
     char *save_file;
 };
 
+struct dump_wrapper {
+    pcap_t *pcap;
+    pcap_dumper_t *dumper;
+};
+
 struct stats *get_stats();
 struct options *get_options();
 struct lua_State * get_lua_vm();
 int is_local_address(struct in_addr addr);
+
 #endif

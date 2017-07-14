@@ -5,5 +5,5 @@
 
 pcap_t* open_pcap_by_device(const char *dev, char *errbuf);
 pcap_t* open_pcap_by_offline(const char *filename, char *buf);
-int core_loop(pcap_t *pcap, const char *filter, pcap_handler handler);
+int core_loop(pcap_t *pcap, const char *filter, pcap_handler handler, void *private);
 #endif

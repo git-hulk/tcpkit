@@ -193,7 +193,7 @@ extract_ip_packet(int link_type, const unsigned char *packet) {
 
 void
 stats_packet_handler(unsigned char *user, const struct pcap_pkthdr *header,
-                const unsigned char *packet) {
+        const unsigned char *packet) {
     int size, link_type;
     struct tcp_packet *tp;
     struct udp_packet *up;
@@ -219,11 +219,20 @@ stats_packet_handler(unsigned char *user, const struct pcap_pkthdr *header,
 
 void
 analyze_packet_handler(unsigned char *user, const struct pcap_pkthdr *header,
-                const unsigned char *packet) {
+        const unsigned char *packet) {
     int link_type;
     const struct ip *ip_packet;
 
     link_type= pcap_datalink((pcap_t*)user);
     ip_packet = extract_ip_packet(link_type, packet);
     push_packet_to_user(ip_packet, &header->ts); 
+}
+
+void
+dump_packet_handler(unsigned char *user, const struct pcap_pkthdr *header,
+        const unsigned char *packet) {
+    struct dump_wrapper *dw = (struct dump_wrapper*)user;
+    pcap_dump((unsigned char *)dw->dumper, header, packet);
+    // update packet stats
+    stats_packet_handler((unsigned char *)dw->pcap, header, packet);
 }

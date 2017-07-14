@@ -11,13 +11,15 @@
 #include "local_addresses.h"
 
 struct server {
+    int stop;
     char *filter;
     lua_State *vm;
-    struct options *opts;
-    struct stats *stats;
-    struct array *local_addrs;
     pcap_t *sniffer;
-    int stop;
+    void *private;
+    struct stats *stats;
+    pcap_handler handler;
+    struct options *opts;
+    struct array *local_addrs;
 };
 
 struct server srv;
@@ -39,10 +41,13 @@ get_stats() {
 
 pcap_handler
 get_live_handler(struct options *opts) {
-    if (opts->duration > 0) {// only print stats
+    if (opts->duration > 0 && !opts->save_file) {// only print stats
         return stats_packet_handler;
+    } else if(opts->save_file) {
+        return dump_packet_handler;
+    } else {
+        return analyze_packet_handler;
     }
-    return analyze_packet_handler;
 }
 
 void* print_stats_routine(void *arg) {
@@ -161,78 +166,90 @@ signal_handler(int sig) {
     }
 }
 
-int
-main(int argc, char **argv)
-{
-    int ret;
-    lua_State *vm;
-    pcap_t *sniffer;
+char *
+init_server(struct options *opts) {
+    char *errbuf;
+    struct dump_wrapper *dw = NULL;
     pthread_t stats_tid;
+
+    errbuf = malloc(PCAP_ERRBUF_SIZE + 1);
+    srv.opts = opts;
+    set_log_file(opts->log_file);
+    srv.vm = script_create_vm(opts->script);
+    if (!srv.vm) {
+        sprintf(errbuf, "failed to create lua vm");
+        return errbuf;
+    }
+    if (!script_is_func_exists(srv.vm, DEFAULT_CALLBACK)) {
+        sprintf(errbuf, "process_packet function was not found");
+        return errbuf;
+    }
+    srv.local_addrs = get_local_addresses(opts->local_addresses);
+    if(array_used(srv.local_addrs) <= 0) {
+        sprintf(errbuf, "local address list is empty");
+        return errbuf;
+    }
+    srv.stats = create_stats();
+    if (opts->duration > 0) {
+        if(pthread_create(&stats_tid, NULL, print_stats_routine, (void*)(long)opts->duration)) {
+            sprintf(errbuf, "failed to create stats thread");
+            return errbuf;
+        }
+    }
+    srv.filter = create_filter(opts);
+    if (opts->offline_file) {
+        srv.handler = analyze_packet_handler;
+        srv.sniffer = open_pcap_by_offline(opts->offline_file, errbuf);
+    } else {
+        srv.handler = get_live_handler(opts);
+        srv.sniffer = open_pcap_by_device(opts->device, errbuf);
+    }
+    if (!srv.sniffer) {
+        return errbuf;
+    }
+    srv.private = srv.sniffer;
+    if (srv.handler == dump_packet_handler) {
+        dw = malloc(sizeof(*dw));
+        dw->dumper = pcap_dump_open(srv.sniffer, opts->save_file);
+        dw->pcap = srv.sniffer;
+        srv.private = dw;
+    }
+    if (dw && !dw->dumper) {
+        sprintf(errbuf, "failed to open save file, %s", pcap_geterr(srv.sniffer));
+        free(dw);
+        return errbuf;
+    }
+    return NULL;
+}
+
+int
+main(int argc, char **argv) {
+    char *err;
     struct options *opts;
-    struct array *local_addrs;
-    pcap_handler handler;
-    char errbuf[PCAP_ERRBUF_SIZE];
 
     opts = parse_options(argc, argv);
     if(opts->is_usage) {
         usage(argv[0]);
-        exit(0);
+        return 0;
     }
     if(opts->show_version) {
         printf("%s version is %s\n", argv[0], VERSION);
-        exit(0);
+        return 0;
     }
-    set_log_file(opts->log_file);
-    srv.opts = opts;
-
-    vm = script_create_vm(opts->script);
-    if (!vm && !opts->is_calc_mode) {
-        logger(ERROR, "Failed to create lua vm");
-        exit(0);
+    err = init_server(opts);
+    if (err) {
+        logger(ERROR, "Failed to init server, err: %s", err);
+        free(err);
+        return 1;
     }
-    srv.vm = vm;
-
-    if (!script_is_func_exists(vm, DEFAULT_CALLBACK)) {
-        logger(ERROR, "Function process_packet was not found");
-        exit(0);
-    }
-    local_addrs = get_local_addresses(opts->local_addresses);
-    if(array_used(local_addrs) <= 0) {
-        logger(ERROR, "You must run with sudo, or use -l option to set local address\n");
-        exit(0);
-    }
-    srv.local_addrs = local_addrs;
-    
-    // setup print stats thread
-    srv.stats = create_stats();
-    if (opts->duration > 0) {
-        ret = pthread_create(&stats_tid, NULL, print_stats_routine, (void*)(long)opts->duration);
-        if (ret != 0) {
-            logger(WARN, "Fail to create print stats thread, err\n", strerror(errno));
-        }
-    }
-    // register signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-
-    if (opts->offline_file) {
-        handler = analyze_packet_handler;
-        sniffer = open_pcap_by_offline(opts->offline_file, errbuf);
-    } else {
-        handler = get_live_handler(opts);
-        sniffer = open_pcap_by_device(opts->device, errbuf);
-    }
-    if (!sniffer) {
-        logger(ERROR, "Failed to init tcpkit, err %s\n", errbuf);
-        exit(0);
-    }
-    srv.sniffer = sniffer;
-    srv.filter = create_filter(opts);
     logger(INFO, "Setup tcpkit on device %s with filter[%s ]\n", opts->device, srv.filter);
-    if(core_loop(sniffer, srv.filter, handler) == -1) {
-        logger(ERROR, "Failed to start tcpkit, err %s\n", pcap_geterr(sniffer));
+    if(core_loop(srv.sniffer, srv.filter, srv.handler, srv.private) == -1) {
+        logger(ERROR, "Failed to start tcpkit, err: %s\n", pcap_geterr(srv.sniffer));
     }
+
     terminate();
-    pcap_close(sniffer);
+    pcap_close(srv.sniffer);
     return 0;
 }
