@@ -20,6 +20,7 @@ struct server {
     pcap_handler handler;
     struct options *opts;
     struct array *local_addrs;
+    pthread_t stats_tid;
 };
 
 struct server srv;
@@ -148,7 +149,6 @@ terminate() {
     if (!srv.stop) {
         // FIXME: free options
         pcap_breakloop(srv.sniffer);
-        script_release(srv.vm);
         srv.stop = 1;
     }
 }
@@ -170,7 +170,6 @@ char *
 init_server(struct options *opts) {
     char *errbuf;
     struct dump_wrapper *dw = NULL;
-    pthread_t stats_tid;
 
     errbuf = malloc(PCAP_ERRBUF_SIZE + 1);
     srv.opts = opts;
@@ -191,7 +190,7 @@ init_server(struct options *opts) {
     }
     srv.stats = create_stats();
     if (opts->duration > 0) {
-        if(pthread_create(&stats_tid, NULL, print_stats_routine, (void*)(long)opts->duration)) {
+        if(pthread_create(&srv.stats_tid, NULL, print_stats_routine, (void*)(long)opts->duration)) {
             sprintf(errbuf, "failed to create stats thread");
             return errbuf;
         }
@@ -249,7 +248,10 @@ main(int argc, char **argv) {
         logger(ERROR, "Failed to start tcpkit, err: %s\n", pcap_geterr(srv.sniffer));
     }
 
-    terminate();
+    if (srv.opts->duration > 0) {
+        pthread_join(srv.stats_tid, NULL);
+    }
     pcap_close(srv.sniffer);
+    script_release(srv.vm);
     return 0;
 }
