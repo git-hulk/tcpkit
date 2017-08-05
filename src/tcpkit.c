@@ -148,7 +148,6 @@ is_local_address(struct in_addr addr) {
 void
 terminate() {
     if (!srv.stop) {
-        // FIXME: free options
         pcap_breakloop(srv.sniffer);
         srv.stop = 1;
     }
@@ -158,11 +157,14 @@ void
 signal_handler(int sig) {
     struct pcap_stat ps;
     if (sig == SIGINT || sig == SIGTERM) {
-        pcap_stats(srv.sniffer, &ps);
-        fprintf(stderr, "%llu packets captured\n", srv.stats->packets);
-        fprintf(stderr, "%u packets received by filter\n", ps.ps_recv);
-        fprintf(stderr, "%u packets dropped by kernel\n", ps.ps_drop);
-        fprintf(stderr, "%u packet dropped by interface\n", ps.ps_ifdrop);
+        // Dump stat only online
+        if (!srv.opts->offline_file) {
+            pcap_stats(srv.sniffer, &ps);
+            fprintf(stderr, "%llu packets captured\n", srv.stats->packets);
+            fprintf(stderr, "%u packets received by filter\n", ps.ps_recv);
+            fprintf(stderr, "%u packets dropped by kernel\n", ps.ps_drop);
+            fprintf(stderr, "%u packet dropped by interface\n", ps.ps_ifdrop);
+        }
         terminate();
     }
 }
@@ -222,6 +224,27 @@ init_server(struct options *opts) {
     return NULL;
 }
 
+void deinit_server() {
+    struct options *opts;
+
+    pcap_close(srv.sniffer);
+    script_release(srv.vm);
+    if (srv.stats) free(srv.stats);
+    if (srv.filter) free(srv.filter);
+    if (srv.local_addrs) array_dealloc(srv.local_addrs);
+    if (srv.private && srv.private != srv.sniffer) free(srv.private);
+
+    if ((opts = srv.opts)) { // free options
+        if (opts->server) free(opts->server);
+        if (opts->offline_file) free(opts->offline_file);
+        if (opts->save_file) free(opts->save_file);
+        if (opts->device) free(opts->device);
+        if (opts->script) free(opts->script);
+        if (opts->local_addresses) free(opts->local_addresses);
+        if (opts->log_file) free(opts->log_file);
+    }
+}
+
 int
 main(int argc, char **argv) {
     char *err;
@@ -252,7 +275,6 @@ main(int argc, char **argv) {
     if (srv.opts->duration > 0) {
         pthread_join(srv.stats_tid, NULL);
     }
-    pcap_close(srv.sniffer);
-    script_release(srv.vm);
+    deinit_server();
     return 0;
 }
