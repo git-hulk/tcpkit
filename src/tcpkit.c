@@ -123,6 +123,8 @@ create_filter(struct options *opts) {
                 opts->server, protocol, opts->port);
     } else if (opts->port) {
         n = snprintf(filter, n, "%s port %d", protocol, opts->port);
+    } else if (opts->server) {
+        n = snprintf(filter, n, "host %s", opts->server);
     } else { // without filter
         n = snprintf(filter, n, " ");
     }
