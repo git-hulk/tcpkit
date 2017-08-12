@@ -4,20 +4,21 @@ A tool analyze tcp packets with Lua.
 ## How to use
 
 ```
-./tcpkit
-    -s server ip
-    -r offile file 
-    -p port
-    -i device
-    -S lua script path, default is ../scripts/example.lua
-    -l local address
-    -C calculate bandwidth mode
-    -d duration, take effect when -C is set
-    -f log file
-    -t only tcp
-    -u only udp
-    -v version
-    -h help
+./tcpkit is a tool to capature the tcp packets, and analyze the packets with lua
+	-s server ip
+	-p port
+	-i device
+	-r offline file
+	-w write the raw packets to file
+	-S lua script path, default is ../scripts/example.lua
+	-l local address
+	-d interval to print stats, unit is second 
+	-B operating system capture buffer size, in units of KiB (1024 bytes). 
+	-f log file
+	-t only tcp
+	-u only udp
+	-v version
+	-h help
 ```
 
 ### install 
