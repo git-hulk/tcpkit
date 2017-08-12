@@ -28,6 +28,7 @@ struct options {
     char *offline_file;
     char *local_addresses;
     char *save_file;
+    int buffer_size;
 };
 
 struct dump_wrapper {

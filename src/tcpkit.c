@@ -72,6 +72,7 @@ usage(char *prog) {
     fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
     fprintf(stderr, "\t-l local address\n");
     fprintf(stderr, "\t-d interval to print stats, unit is second \n");
+    fprintf(stderr, "\t-B operating system capture buffer size, in units of KiB (1024 bytes). \n");
     fprintf(stderr, "\t-f log file\n");
     fprintf(stderr, "\t-t only tcp\n");
     fprintf(stderr, "\t-u only udp\n");
@@ -85,7 +86,7 @@ parse_options(int argc, char **argv) {
     struct options *opts;
 
     opts = calloc(1, sizeof(*opts));
-    while((ch = getopt(argc, argv, "s:p:i:S:d:l:r:w:uthv")) != -1) {
+    while((ch = getopt(argc, argv, "s:p:i:S:d:B:l:r:w:uthv")) != -1) {
         switch(ch) {
             case 's': opts->server = strdup(optarg); break;
             case 'r': opts->offline_file = strdup(optarg); break;
@@ -94,6 +95,7 @@ parse_options(int argc, char **argv) {
             case 'i': opts->device = strdup(optarg); break;
             case 'S': opts->script = strdup(optarg); break;
             case 'd': opts->duration = atoi(optarg); break;
+            case 'B': opts->buffer_size = atoi(optarg); break;
             case 't': opts->tcp = 1; break;
             case 'u': opts->udp = 1; break;
             case 'l': opts->local_addresses = strdup(optarg); break;
@@ -205,6 +207,16 @@ init_server(struct options *opts) {
     } else {
         srv.handler = get_live_handler(opts);
         srv.sniffer = open_pcap_by_device(opts->device, errbuf);
+        /* Packets that arrive for a capture are stored in a buffer,
+         * so that they do not have to be read by the application as
+         * soon as they arrive. if too many packets are being captured
+         * and the napshot length doesn't limit the amount of data that's buffered,
+         * packets could be dropped if the buffer fills up before the application
+         * can read packets from it
+         */
+        if (opts->buffer_size > 0) {
+            pcap_set_buffer_size(srv.sniffer, opts->buffer_size * 1024);
+        }
     }
     if (!srv.sniffer) {
         return errbuf;
