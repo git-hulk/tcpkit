@@ -46,7 +46,19 @@ function fetch_requset_topic(decoder)
     local replica_id = decoder:read_int32()
     local max_wait = decoder:read_int32()
     local min_bytes = decoder:read_int32()
-    return read_topic(decoder)
+    local topic_count, err  = decoder:read_int32()
+    local topics = " Topics: "
+    for i = 1, topic_count, 1 do
+        topics, err = topics .. " "..decoder:read_short_string()
+        local partitions = decoder:read_int32()
+        for i = 1, partitions, 1 do
+            decoder:read_int32()
+            decoder:read_int64()
+            decoder:read_int32()
+        end
+
+    end
+    return topics 
 end
 
 function produce_requset_topic(decoder)
@@ -72,6 +84,9 @@ function parse_request(payload, size)
     local client_id = decoder:read_short_string()
     local req_name = "UNKNOWN"
 
+    if req_type > 3 or total_size > size then
+        return "UNKNOWN"
+    end
     if req_type >= -1 then
         req_name = request_map[req_type + 1]
     end
@@ -103,9 +118,12 @@ function calculate_request_cost(key, item)
 end
 
 function store_request(key, item)
+    local req = parse_request(item.payload, item.len) 
+    if req ~= "UNKNOWN" then
     packet_hash_sec[key] = item.tv_sec
     packet_hash_usec[key] = item.tv_usec
-    packet_hash_cmd[key] = parse_request(item.payload, item.len)
+    packet_hash_cmd[key] = req
+    end
 end
 
 function handle_incoming(item)
