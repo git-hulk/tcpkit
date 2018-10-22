@@ -33,16 +33,16 @@ function read_topic(decoder)
 
     return topics
 end
-function offsets_requset_topic(decoder)
+function offsets_request_topic(decoder)
     local replica_id = decoder:read_int32()
     return read_topic(decoder)
 end
 
-function metadata_requset_topic(decoder)
+function metadata_request_topic(decoder)
      return read_topic(decoder)
 end
 
-function fetch_requset_topic(decoder)
+function fetch_request_topic(decoder)
     local replica_id = decoder:read_int32()
     local max_wait = decoder:read_int32()
     local min_bytes = decoder:read_int32()
@@ -61,7 +61,7 @@ function fetch_requset_topic(decoder)
     return topics 
 end
 
-function produce_requset_topic(decoder)
+function produce_request_topic(decoder)
     local required_acks = decoder:read_int16()
     if required_acks == 0 then
         packet_hash_sec[key] = nil 
@@ -93,13 +93,13 @@ function parse_request(payload, size)
 
     local ret = req_name
     if req_type == 0 then
-        ret = ret .. produce_requset_topic(decoder)
+        ret = ret .. produce_request_topic(decoder)
     elseif req_type == 1 then
-        ret = ret .. fetch_requset_topic(decoder)
+        ret = ret .. fetch_request_topic(decoder)
     elseif req_type == 2 then
-        ret = ret .. offsets_requset_topic(decoder)
+        ret = ret .. offsets_request_topic(decoder)
     elseif req_type == 3 then
-        ret = ret .. metadata_requset_topic(decoder)
+        ret = ret .. metadata_request_topic(decoder)
     end
     
     return ret 
