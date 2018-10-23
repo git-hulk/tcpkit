@@ -64,9 +64,9 @@ end
 function produce_request_topic(decoder)
     local required_acks = decoder:read_int16()
     if required_acks == 0 then
-        packet_hash_sec[key] = nil 
-        packet_hash_usec[key] = nil 
-        packet_hash_cmd[key] = nil 
+        packet_hash_sec[key] = nil
+        packet_hash_usec[key] = nil
+        packet_hash_cmd[key] = nil
         return ""
     end
 
@@ -102,27 +102,31 @@ function parse_request(payload, size)
         ret = ret .. metadata_request_topic(decoder)
     end
     
-    return ret 
+    return ret, cor_id
 end
 
 function calculate_request_cost(key, item)
-    if packet_hash_cmd[key] then
+    local M = require("kafka_decoder")
+    local decoder = M.new(item.payload, item.len)
+    local total_size = decoder:read_int32()
+    local cor_id = decoder:read_int32()
+    if packet_hash_cmd[cor_id] then
         local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..string.format("%06d",item.tv_usec)
-        local cost = (item.tv_sec - packet_hash_sec[key]) * 1000
-        cost = cost +  (item.tv_usec - packet_hash_usec[key]) / 1000
-        print(string.format("%s | %36s | %s | %3.3fms", time_str, key, packet_hash_cmd[key], cost))
-        packet_hash_sec[key] = nil 
-        packet_hash_usec[key] = nil 
-        packet_hash_cmd[key] = nil 
+        local cost = (item.tv_sec - packet_hash_sec[cor_id]) * 1000
+        cost = cost +  (item.tv_usec - packet_hash_usec[cor_id]) / 1000
+        print(string.format("%s | %36s | %s | %3.3fms", time_str, key, packet_hash_cmd[cor_id], cost))
+        packet_hash_sec[cor_id] = nil
+        packet_hash_usec[cor_id] = nil
+        packet_hash_cmd[cor_id] = nil
     end
 end
 
 function store_request(key, item)
-    local req = parse_request(item.payload, item.len) 
+    local req, cor_id = parse_request(item.payload, item.len)
     if req ~= "UNKNOWN" then
-    packet_hash_sec[key] = item.tv_sec
-    packet_hash_usec[key] = item.tv_usec
-    packet_hash_cmd[key] = req
+    packet_hash_sec[cor_id] = item.tv_sec
+    packet_hash_usec[cor_id] = item.tv_usec
+    packet_hash_cmd[cor_id] = req
     end
 end
 
