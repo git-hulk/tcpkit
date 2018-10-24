@@ -269,6 +269,10 @@ main(int argc, char **argv) {
         usage(argv[0]);
         return 0;
     }
+    if (getuid() != 0 && !opts->offline_file) {
+        logger(INFO, "Root or sudo privleges needed when capturing packets online, please switch to root or use sudo");
+        return 0;
+    }
     if(opts->show_version) {
         printf("%s version is %s\n", argv[0], VERSION);
         return 0;
