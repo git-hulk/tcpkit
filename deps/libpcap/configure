@@ -6962,8 +6962,8 @@ fi
 			# ioctls, so PPC programs can't do live
 			# captures.)
 			#
-			V_CCOPT="$V_CCOPT -arch x86_64 -arch i386 -arch ppc"
-			LDFLAGS="$LDFLAGS -arch x86_64 -arch i386 -arch ppc"
+			V_CCOPT="$V_CCOPT -arch x86_64 -arch ppc"
+			LDFLAGS="$LDFLAGS -arch x86_64 -arch ppc"
 			;;
 
 		darwin*)
@@ -6974,8 +6974,8 @@ fi
 			# XXX - update if and when Apple drops support
 			# for 32-bit x86 code.
 			#
-			V_CCOPT="$V_CCOPT -arch x86_64 -arch i386"
-			LDFLAGS="$LDFLAGS -arch x86_64 -arch i386"
+			V_CCOPT="$V_CCOPT -arch x86_64"
+			LDFLAGS="$LDFLAGS -arch x86_64"
 			;;
 		esac
 	fi
