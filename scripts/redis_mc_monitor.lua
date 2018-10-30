@@ -24,7 +24,7 @@ end
 function calculate_request_cost(key, item)
     if packet_hash_cmd[key] then
         local seq_key = string.format("%s-%d", key, item.seq)
-        local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..item.tv_usec
+        local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..string.format("%06d",item.tv_usec)
         local cost = (item.tv_sec - packet_hash_sec[key]) * 1000
         cost = cost +  (item.tv_usec - packet_hash_usec[key]) / 1000
         if string.len(packet_hash_cmd[key]) > 20 then

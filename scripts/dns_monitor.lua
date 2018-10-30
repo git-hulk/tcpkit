@@ -136,8 +136,8 @@ function process_packet(item)
         if storage[key] then
             query = storage[key]
             local cost = (item.tv_sec - query.tv_sec) * 1000 + (item.tv_usec - query.tv_usec) / 1000
-            local t = os.date("%Y-%m-%d %H:%M:%S",1.0 * item.tv_sec + item.tv_usec/1000000.0)
-            print(string.format("%s | %s | %s | %3.3fms", t, key, query.domains, cost))
+            local time_str = os.date('%Y-%m-%d %H:%M:%S', item.tv_sec).."."..string.format("%06d",item.tv_usec)
+            print(string.format("%s | %s | %s | %3.3fms", time_str, key, query.domains, cost))
             storage[key] = nil
         else 
             print("recevie unknown response:", key)
