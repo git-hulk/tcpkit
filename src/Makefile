@@ -44,8 +44,8 @@ endif
 endif
 
 deps: nop 
-	@cd ../deps/libpcap/  && ./configure && make
-	@cd ../deps/lua/src && make $(os_Platform)
+	@cd ../deps/libpcap/  && ./configure --enable-dbus=no && make
+	@cd ../deps/lua/src && make a
 
 clean:
 	- rm -rf $(PROG) && rm -rf  *.o 
