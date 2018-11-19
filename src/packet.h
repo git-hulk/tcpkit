@@ -34,21 +34,10 @@ typedef struct {
     unsigned int ack;
     char *payload;
     unsigned int size;
-    int request;
-} tcp_packet;
+    int8_t request;
+    int8_t tcp;
+} user_packet;
 
-typedef struct {
-    const struct timeval *tv;
-    struct in_addr sip;
-    struct in_addr dip;
-    uint16_t sport;
-    uint16_t dport;
-    char *payload;
-    unsigned int size;
-    int request;
-} udp_packet;
-
-void free_tcp_req_packet(void *ptr);
 void extract_packet_handler(unsigned char *user,
                             const struct pcap_pkthdr *header,
                             const unsigned char *packet);

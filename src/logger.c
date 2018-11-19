@@ -66,8 +66,8 @@ void alog(enum LEVEL loglevel, char *fmt, ...) {
     va_end(ap);
     switch(loglevel) {
         case DEBUG: msg = "DEBUG"; break;
-        case INFO:  msg = "INFO";  color = C_YELLOW ; break;
-        case WARN:  msg = "WARN";  color = C_PURPLE; break;
+        case INFO:  msg = "INFO";  color = C_GREEN; break;
+        case WARN:  msg = "WARN";  color = C_YELLOW; break;
         case ERROR: msg = "ERROR"; color = C_RED; break;
         case FATAL: msg = "FATAL"; color = C_RED; break;
     }

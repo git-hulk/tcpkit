@@ -44,11 +44,12 @@ pcap_t *sniffer_packet_online(char **device, int buffer_size, char *err_buf) {
     if(pcap || strcasecmp(*device, "any") != 0) {
         return pcap;
     }
+
     new_device = pcap_lookupdev(err_buf);
     if (new_device) {
-        pcap = pcap_open_live(new_device, capture_length, 0, timeout, err_buf);
-        free(*device);
+        if (*device) free(*device);
         *device = strdup(new_device);
+        pcap = pcap_open_live(*device, capture_length, 0, timeout, err_buf);
     }
     if (pcap) {
         pcap_set_buffer_size(pcap, buffer_size);

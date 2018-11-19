@@ -50,12 +50,12 @@ static void usage() {
     fprintf(stderr, "TCPKIT is a tool to capature the tcp packets, and analyze the packets with lua\n");
     fprintf(stderr, "\t-s which server ip to monitor, e.g. 192.168.1.2,192.168.1.3\n");
     fprintf(stderr, "\t-p which n_latency to monitor, e.g. 6379,6380\n");
-    fprintf(stderr, "\t-P st listen port, default is 33333\n");
+    fprintf(stderr, "\t-P stats listen port, default is 33333\n");
     fprintf(stderr, "\t-i network card interface, e.g. bond0, lo, em0... see 'ifconfig'\n");
     fprintf(stderr, "\t-d daemonize, run process in background\n");
     fprintf(stderr, "\t-r set offline file captured by tcpdump or tcpkit\n");
     fprintf(stderr, "\t-t request latency threshold, unit is millisecond\n");
-    fprintf(stderr, "\t-m protocol mode, raw,redis,memcached,dns\n");
+    fprintf(stderr, "\t-m protocol mode, raw,redis,memcached\n");
     fprintf(stderr, "\t-w dump packets to 'savefile'\n");
     fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
     fprintf(stderr, "\t-B operating system capture buffer size, in units of KiB (1024 bytes). \n");
@@ -89,8 +89,6 @@ static int parse_protocol(const char *protocol) {
        return P_REDIS;
    } else if (!strncasecmp(protocol, "memcached", strlen(protocol))) {
        return P_MEMCACHED;
-   } else if (!strncasecmp(protocol, "dns", strlen(protocol))) {
-       return P_DNS;
    }
    return P_RAW;
 }
@@ -184,6 +182,9 @@ int main(int argc, char **argv) {
 
     alog(INFO, "TCPKIT @version %s, developed by @git-hulk", VERSION);
     srv.opts = parse_options(argc, argv);
+//    if (getuid() != 0 && !srv.opts->offline_file) {
+//        alog(FATAL, "You need to be root to capture the packets online.");
+//    }
     if (array_used(srv.opts->ports) <= 0) {
         alog(FATAL, "Please use -p [port] to specify the server port");
     }

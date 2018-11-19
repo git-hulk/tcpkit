@@ -39,7 +39,6 @@ typedef struct {
     char *script;
     char *device;
     int mode;
-    struct array *local_addrs;
     int daemonize;
     int buffer_size;
 }options;
@@ -59,6 +58,5 @@ typedef enum {
    P_RAW = 0,
    P_REDIS,
    P_MEMCACHED,
-   P_DNS
 }PROTOCOL_TYPE;
 #endif //TCPKIT_TCPIKT_H

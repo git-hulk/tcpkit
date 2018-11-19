@@ -13,7 +13,7 @@ TCPKIT_CC = $(CC) $(CFLAGS) $(CINCLUDES)
 PROG = tcpkit
 
 
-OBJS = util.o array.o dns.o hashtable.o logger.o packet.o redis.o server.o sniffer.o stats.o tcpkit.o vm.o
+OBJS = util.o array.o hashtable.o logger.o packet.o redis.o server.o sniffer.o stats.o tcpkit.o vm.o
 
 all: deps tcpkit
 .PHONY: all

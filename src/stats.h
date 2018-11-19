@@ -19,11 +19,13 @@
 
 #include <stdint.h>
 
+#define N_BUCKET 18
+
 typedef struct {
     int64_t total_reqs;
     int64_t total_costs;
-    // 1ms, 5ms, 10ms, 20ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s, 3s, 4s, 5s, 10s, 20s, 100s
-    int64_t buckets[16];
+    int64_t slow_counts;
+    int64_t buckets[N_BUCKET];
 }latency_stat;
 
 typedef struct {
@@ -35,11 +37,12 @@ typedef struct {
     int n_latency;
 }stats;
 
-#define N_BUCKET 16
 extern int64_t latency_buckets[N_BUCKET];
+extern const char *latency_buckets_name[N_BUCKET];
 
 stats *stats_create(int n);
 void stats_destroy(stats *st);
 void stats_update_bytes(stats *st, int req, uint64_t bytes);
-void stats_update_latency(stats *st, int ind, int64_t latency);
+void stats_incr_slow_count(stats *st, int ind);
+void stats_update_latency(stats *st, int ind, int64_t latency_us);
 #endif //TCPKIT_STATS_H

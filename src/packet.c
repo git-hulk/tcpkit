@@ -48,9 +48,9 @@ static int port_in_target(server *srv, int dport) {
     return -1;
 }
 
-static tcp_packet* gen_tcp_packet(const struct timeval *tv, const struct ip *ip_packet) {
+static user_packet* gen_tcp_packet(const struct timeval *tv, const struct ip *ip_packet) {
     struct tcphdr *tcphdr;
-    tcp_packet *packet;
+    user_packet* packet;
     unsigned int size, iphdr_size, tcphdr_size;
 
     packet = malloc(sizeof(*packet));
@@ -78,13 +78,14 @@ static tcp_packet* gen_tcp_packet(const struct timeval *tv, const struct ip *ip_
 #endif
     packet->payload = (char *)tcphdr + tcphdr_size;
     packet->size = size - iphdr_size - tcphdr_size;
+    packet->tcp = 1;
 
     // update the st
     return packet;
 }
 
-static udp_packet* gen_udp_packet(const struct timeval *tv, const struct ip *ip_packet) {
-    udp_packet *packet;
+static user_packet* gen_udp_packet(const struct timeval *tv, const struct ip *ip_packet) {
+    user_packet *packet;
     struct udphdr *udphdr;
     int iphdr_size;
 
@@ -105,10 +106,11 @@ static udp_packet* gen_udp_packet(const struct timeval *tv, const struct ip *ip_
     packet->size = ntohs(udphdr->len);
 #endif
     packet->payload = (char *)udphdr + sizeof(struct udphdr);
+    packet->tcp = 0;
     return packet;
 }
 
-static void push_packet_to_vm(lua_State *vm, tcp_packet *packet) {
+static void push_packet_to_vm(lua_State *vm, user_packet *packet) {
     lua_getglobal(vm, "process");
     lua_newtable(vm);
     vm_push_table_int(vm, "tv_sec", packet->tv->tv_sec);
@@ -117,9 +119,11 @@ static void push_packet_to_vm(lua_State *vm, tcp_packet *packet) {
     vm_push_table_int(vm, "sport", packet->sport);
     vm_push_table_string(vm, "dip", inet_ntoa(packet->dip));
     vm_push_table_int(vm, "dport", packet->dport);
-    vm_push_table_int(vm, "seq", packet->seq);
-    vm_push_table_int(vm, "ack", packet->ack);
-    vm_push_table_int(vm, "flags", packet->flags);
+    if (packet->tcp) {
+        vm_push_table_int(vm, "seq", packet->seq);
+        vm_push_table_int(vm, "ack", packet->ack);
+        vm_push_table_int(vm, "flags", packet->flags);
+    }
     vm_push_table_boolean(vm, "request", packet->request);
     vm_push_table_cstring(vm, "payload", packet->payload, packet->size);
     vm_push_table_int(vm, "size", packet->size);
@@ -132,7 +136,7 @@ static void push_packet_to_vm(lua_State *vm, tcp_packet *packet) {
     vm_need_gc(vm);
 }
 
-static void push_packet_to_user(server *srv, tcp_packet *packet) {
+static void push_tcp_packet_to_user(server *srv, user_packet *packet) {
     char *type = "REQ";
     if (srv->vm) {
         push_packet_to_vm(srv->vm, packet);
@@ -140,31 +144,42 @@ static void push_packet_to_user(server *srv, tcp_packet *packet) {
     }
     if (packet->size == 0) return;
     if (!packet->request) type = "RSP";
-    // use default process function
-    rlog("%s %s:%d=>%s:%d %s %u %u %d %u %.*s",
-         "abc",
-         inet_ntoa(packet->sip),
-         packet->sport,
-         inet_ntoa(packet->dip),
-         packet->dport,
-         type,
-         packet->seq,
-         packet->ack,
-         packet->flags,
-         packet->size,
-         packet->size,
-         packet->payload
-    );
+    if (packet->tcp) {
+        rlog("%s %s:%d=>%s:%d %s %u %u %d %u %.*s",
+             "abc",
+             inet_ntoa(packet->sip),
+             packet->sport,
+             inet_ntoa(packet->dip),
+             packet->dport,
+             type,
+             packet->seq,
+             packet->ack,
+             packet->flags,
+             packet->size,
+             packet->size,
+             packet->payload
+        );
+    } else {
+        rlog("%s %s:%d=>%s:%d %s %u %.*s",
+             "abc",
+             inet_ntoa(packet->sip),
+             packet->sport,
+             inet_ntoa(packet->dip),
+             packet->dport,
+             type,
+             packet->size,
+             packet->size,
+             packet->payload
+        );
+    }
 }
 
-static void record_simple_latency(server *srv, tcp_packet *packet) {
-    int latency;
+static void record_simple_latency(server *srv, user_packet *packet) {
+    int latency_us;
     size_t size;
     char key[64], t_buf[64];
     char *sip, *dip, sip_buf[16], dip_buf[16];
 
-
-    // TODO: calculate latency if protocol is redis/memcached
     if (packet->size == 0) return; // ignore the syn/fin packet
 
     sip = inet_ntoa(packet->sip);
@@ -189,36 +204,36 @@ static void record_simple_latency(server *srv, tcp_packet *packet) {
         snprintf(key, 64, "%s:%d => %s:%d", dip_buf, packet->dport, sip_buf, packet->sport);
         request *req = hashtable_get(srv->req_ht, key);
         if (req) {
-            latency = (packet->tv->tv_sec - req->tv.tv_sec) * 1000 + (packet->tv->tv_usec - req->tv.tv_usec)/1000;
+            latency_us = (packet->tv->tv_sec - req->tv.tv_sec) * 1000000 + (packet->tv->tv_usec - req->tv.tv_usec);
             int ind = port_in_target(srv, packet->sport);
-            stats_update_latency(srv->st, ind, latency);
-            if (latency >= srv->opts->threshold_ms) {
+            stats_update_latency(srv->st, ind, latency_us);
+            if (latency_us >= srv->opts->threshold_ms*1000) {
+                if (srv->opts->threshold_ms>0) stats_incr_slow_count(srv->st, ind);
                 strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&packet->tv->tv_sec));
-                rlog("%s.%06d %.44s | %d ms | %s", t_buf, packet->tv->tv_usec, key, latency, req->buf);
+                rlog("%s.%06d %.44s | %.3f ms | %s", t_buf, packet->tv->tv_usec, key, latency_us/1000.0, req->buf);
             }
             hashtable_del(srv->req_ht, key);
         }
     }
 }
 
-static void process_tcp_packet(server *srv, tcp_packet *packet) {
+static void process_tcp_packet(server *srv, user_packet *packet) {
     if (srv->opts->mode == P_RAW) {
-        push_packet_to_user(srv, packet);
+        push_tcp_packet_to_user(srv, packet);
     } else {
         record_simple_latency(srv, packet);
     }
 }
 
-
-static void process_udp_packet(server *srv, udp_packet *packet) {
+static void process_udp_packet(server *srv, user_packet *packet) {
+    push_tcp_packet_to_user(srv, packet);
 }
 
 void extract_packet_handler(unsigned char *user,
                        const struct pcap_pkthdr *header,
                        const unsigned char *packet) {
     const struct ip* ip_packet;
-    tcp_packet *tcp_packet;
-    udp_packet *udp_packet;
+    user_packet *upacket;
 
     server *srv = (server*) user;
     switch (pcap_datalink((pcap_t*)srv->sniffer)) {
@@ -235,18 +250,18 @@ void extract_packet_handler(unsigned char *user,
     }
     switch (ip_packet->ip_p) {
         case IPPROTO_TCP:
-            tcp_packet = gen_tcp_packet(&header->ts, ip_packet);
-            tcp_packet->request = port_in_target(srv, tcp_packet->dport) != -1;
-            stats_update_bytes(srv->st, tcp_packet->request, tcp_packet->size);
-            process_tcp_packet(srv, tcp_packet);
-            free(tcp_packet);
+            upacket = gen_tcp_packet(&header->ts, ip_packet);
+            upacket->request = port_in_target(srv, upacket->dport) != -1;
+            stats_update_bytes(srv->st, upacket->request, upacket->size);
+            process_tcp_packet(srv, upacket);
+            free(upacket);
             break;
         case IPPROTO_UDP:
-            udp_packet = gen_udp_packet(&header->ts, ip_packet);
-            udp_packet->request = port_in_target(srv, udp_packet->dport);
-            stats_update_bytes(srv->st, udp_packet->request, udp_packet->size);
-            process_udp_packet(srv, udp_packet);
-            free(udp_packet);
+            upacket = gen_udp_packet(&header->ts, ip_packet);
+            upacket->request = port_in_target(srv, upacket->dport)!=-1;
+            stats_update_bytes(srv->st, upacket->request, upacket->size);
+            process_udp_packet(srv, upacket);
+            free(upacket);
             break;
         default:
             break;

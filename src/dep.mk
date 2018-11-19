@@ -1,5 +1,4 @@
 array.o: array.c array.h
-dns.o: dns.c dns.h
 hashtable.o: hashtable.c hashtable.h
 logger.o: logger.c logger.h
 packet.o: packet.c ../deps/libpcap/pcap/sll.h packet.h \

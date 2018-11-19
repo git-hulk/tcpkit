@@ -48,9 +48,9 @@ void server_deinit(server *srv) {
 
     srv->stop = 1;
     sniffer_terminate(srv->sniffer);
-    if (srv->sniffer)  pcap_close(srv->sniffer);
-    if (srv->vm) lua_close(srv->vm);
     pthread_join(srv->stats_tid, NULL);
+    if (srv->sniffer) pcap_close(srv->sniffer);
+    if (srv->vm) lua_close(srv->vm);
     // wait for stats thread
     if (srv->filter) free(srv->filter);
     if (srv->st) stats_destroy(srv->st);
@@ -68,6 +68,7 @@ void server_deinit(server *srv) {
         free(opts);
     }
 }
+
 static void server_print_latency_stats(server *srv) {
     int i, j;
     int64_t average_latency;
@@ -76,28 +77,21 @@ static void server_print_latency_stats(server *srv) {
     for (i = 0; i < array_used(srv->opts->ports); i++) {
         if (srv->st->latencies[i].total_reqs == 0) continue;
         average_latency = srv->st->latencies[i].total_costs / srv->st->latencies[i].total_reqs;
-        rlog("tcp port: %d, calls: %lld, average latency: %lldms\n",
+        rlog("tcp port: %d, total requests: %lld, average latency: %.3f ms, slow threshod: %d ms, slow requests: %lld",
              *(int *) array_pos(srv->opts->ports, i),
              srv->st->latencies[i].total_reqs,
-             average_latency
+             average_latency/1000.0,
+             srv->opts->threshold_ms,
+             srv->st->latencies[i].slow_counts
         );
 
         for (j = 0; j < N_BUCKET; j++) {
             if (srv->st->latencies[i].buckets[j] == 0) continue;
             if (j >= 1) {
-                rlog("%lld%s~%lld%s: %lld",
-                     latency_buckets[j - 1] <= 1000 ? latency_buckets[j - 1] : latency_buckets[j - 1] / 1000,
-                     latency_buckets[j - 1] <= 1000 ? "ms" : "s",
-                     latency_buckets[j] <= 1000 ? latency_buckets[j] : latency_buckets[j] / 1000,
-                     latency_buckets[j] <= 1000 ? "ms" : "s",
-                     srv->st->latencies[i].buckets[j]
-                );
+                rlog("%s~%s: %lld", latency_buckets_name[j-1], latency_buckets_name[j],
+                     srv->st->latencies[i].buckets[j]);
             } else {
-                rlog("0ms~%lld%s: %lld",
-                     latency_buckets[j] <= 1000 ? latency_buckets[j] : latency_buckets[j] / 1000,
-                     latency_buckets[j] <= 1000 ? "ms" : "s",
-                     srv->st->latencies[i].buckets[j]
-                );
+                rlog("0ms~%s: %lld", latency_buckets_name[j], srv->st->latencies[i].buckets[j]);
             }
         }
     }
@@ -124,15 +118,26 @@ char *server_stats_to_json(server *svr) {
 
     stats *st = svr->st;
     // latencies
-    size = (N_BUCKET* 20 + 2 * 20 + 128) * st->n_latency;
+    size = (N_BUCKET* 20 + 2 * 20 + 128) * st->n_latency+256;
     buf = malloc(size);
+    n += snprintf(buf, size,
+                  "{\"in_packets\":%lld,"
+                  "\"out_packets\":%lld,"
+                  "\"in_bytes\":%lld,"
+                  "\"out_bytes\":%lld,"
+                  " \"ports\":",
+                  st->req_packets,
+                  st->rsp_packets,
+                  st->req_bytes,
+                  st->rsp_bytes);
     buf[n++] = '[';
     for (i = 0; i < st->n_latency; i++) {
         n += snprintf(buf+n, size-n,
-                      "{\"%d\":{\"total_reqs\": %lld,\"total_costs\":%lld,\"latencies\":[",
+                      "{\"%d\":{\"total_reqs\": %lld,\"total_costs\":%lld, \"slow_reqs\":%lld,\"latencies\":[",
                       *(int*)array_pos(svr->opts->ports, i),
                       st->latencies[i].total_reqs,
-                      st->latencies[i].total_costs);
+                      st->latencies[i].total_costs,
+                      st->latencies[i].slow_counts);
         for (j = 0; j < N_BUCKET; j++) {
             n += snprintf(buf+n, size-n, "%lld,", st->latencies[i].buckets[j]);
         }
@@ -142,7 +147,8 @@ char *server_stats_to_json(server *svr) {
         buf[n++] = ',';
     }
     buf[n-1] = ']';
-    buf[n] = '\0';
+    buf[n] = '}';
+    buf[n+1] = '\0';
     return buf;
 }
 
