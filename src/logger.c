@@ -36,7 +36,7 @@ void rlog(char *fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     fprintf(log_fp, "%s\n", buf);
-    fflush(log_fp);
+    if (log_fp != stdout) fflush(log_fp);
 }
 
 void alog(enum LEVEL loglevel, char *fmt, ...) {
@@ -66,10 +66,10 @@ void alog(enum LEVEL loglevel, char *fmt, ...) {
     strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&now));
     if(log_fp != stdout) {
         fprintf(log_fp, "[%s] [%s] %s\n", t_buf, msg, buf);
+        fflush(log_fp);
     } else {
         fprintf(log_fp, "%s[%s] [%s] %s"C_NONE"\n", color, t_buf, msg, buf);
     }
-    fflush(log_fp);
     if(loglevel > ERROR) {
         exit(1);
     }
