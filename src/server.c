@@ -44,8 +44,6 @@ int server_init(server *srv) {
 }
 
 void server_deinit(server *srv) {
-    int i;
-
     srv->stop = 1;
     sniffer_terminate(srv->sniffer);
     pthread_join(srv->stats_tid, NULL);

@@ -154,7 +154,7 @@ static char *gen_filter_from_options(options *opts) {
 }
 
 static void daemonize() {
-    pid_t pid, sid;
+    pid_t pid;
 
     pid = fork();
     if (pid < 0) {
@@ -174,7 +174,7 @@ static void daemonize() {
 // TODO: You need to be root to perform this command
 
 int main(int argc, char **argv) {
-    char *filter, err_buf[MAX_ERR_BUFF_SIZE];
+    char err_buf[MAX_ERR_BUFF_SIZE];
     pcap_t *sniffer;
 
     signal(SIGINT, signal_handler);
