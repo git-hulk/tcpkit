@@ -33,6 +33,9 @@ tags
 .DS_Store
 
 # Debug files
+*.xml
+*.log
 .idea
 cmake-build-debug
 CMakeLists.txt
+tcpkit
