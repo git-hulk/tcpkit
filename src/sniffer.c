@@ -42,6 +42,7 @@ pcap_t *sniffer_packet_online(char **device, int buffer_size, char *err_buf) {
     }
     pcap = pcap_open_live(*device, capture_length, 0, timeout, err_buf);
     if(pcap || strcasecmp(*device, "any") != 0) {
+        if(pcap) pcap_set_buffer_size(pcap, buffer_size);
         return pcap;
     }
 

@@ -171,8 +171,6 @@ static void daemonize() {
     close(STDERR_FILENO);
 }
 
-// TODO: You need to be root to perform this command
-
 int main(int argc, char **argv) {
     char err_buf[MAX_ERR_BUFF_SIZE];
     pcap_t *sniffer;
