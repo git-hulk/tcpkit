@@ -54,7 +54,7 @@ static void usage() {
     fprintf(stderr, "\t-i network card interface, e.g. bond0, lo, em0... see 'ifconfig'\n");
     fprintf(stderr, "\t-d daemonize, run process in background\n");
     fprintf(stderr, "\t-r set offline file captured by tcpdump or tcpkit\n");
-    fprintf(stderr, "\t-t request latency threshold, unit is millisecond\n");
+    fprintf(stderr, "\t-t request latency threshold(unit in millisecond), default is 50ms\n");
     fprintf(stderr, "\t-m protocol mode, raw,redis,memcached\n");
     fprintf(stderr, "\t-w dump packets to 'savefile'\n");
     fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
@@ -102,6 +102,7 @@ static options* parse_options(int argc, char **argv) {
     opts->mode = P_RAW;
     opts->threshold_ms = 0;
     opts->stats_port = 33333;
+    opts->threshold_ms = 50;
     opts->buffer_size = 125 *1024 * 1024;
     while((ch = getopt(argc, argv, "s:p:P:r:t:m:w:i:S:B:o:udh")) != -1) {
         switch(ch) {
@@ -178,6 +179,7 @@ int main(int argc, char **argv) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
+    set_log_fp(stdout);
     alog(INFO, "TCPKIT @version %s, developed by @git-hulk", VERSION);
     srv.opts = parse_options(argc, argv);
     if (getuid() != 0 && !srv.opts->offline_file) {
@@ -202,8 +204,12 @@ int main(int argc, char **argv) {
     srv.sniffer = sniffer;
     srv.filter = gen_filter_from_options(srv.opts);
     alog(INFO, "Start capturing on device %s, with filter[%s]", srv.opts->device, srv.filter);
+    if (srv.opts->logfile) {
+        FILE *fp = fopen(srv.opts->logfile, "a");
+        if (!fp) alog(FATAL, "Failed to open log file, err:%s", strerror(errno));
+        set_log_fp(fp);
+    }
     if (srv.opts->daemonize) daemonize();
-    if (srv.opts->logfile) set_log_file(srv.opts->logfile);
     if (sniffer_loop(sniffer, srv.filter, extract_packet_handler, &srv) == -1) {
         alog(FATAL, "Failed to start the sniffer, err: %s", pcap_geterr(sniffer));
     }

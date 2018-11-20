@@ -16,40 +16,30 @@
 
 #include <time.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
 
 #include "logger.h"
 
-static char *log_file = NULL;
 static enum LEVEL log_level = INFO;
+static FILE *log_fp = NULL;
 
-void set_log_level(enum LEVEL level) {
-    log_level  = level;
-}
-
-void set_log_file(char *filename) {
-    if (filename) log_file = filename;
+void set_log_fp(FILE *fp) {
+    log_fp = fp;
 }
 
 void rlog(char *fmt, ...) {
-    FILE *fp;
     va_list ap;
     char buf[4096];
 
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    fp = (log_file == NULL) ? stdout : fopen(log_file,"a");
-    fprintf(fp, "%s\n", buf);
-    if(log_file) {
-        fclose(fp);
-    }
+    fprintf(log_fp, "%s\n", buf);
+    fflush(log_fp);
 }
 
 void alog(enum LEVEL loglevel, char *fmt, ...) {
-    FILE *fp;
     va_list ap;
     time_t now;
     char buf[4096];
@@ -74,13 +64,12 @@ void alog(enum LEVEL loglevel, char *fmt, ...) {
 
     now = time(NULL);
     strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&now));
-    fp = (log_file == NULL) ? stdout : fopen(log_file,"a");
-    if(log_file) {
-        fprintf(fp, "[%s] [%s] %s\n", t_buf, msg, buf);
-        fclose(fp);
+    if(log_fp != stdout) {
+        fprintf(log_fp, "[%s] [%s] %s\n", t_buf, msg, buf);
     } else {
-        fprintf(fp, "%s[%s] [%s] %s"C_NONE"\n", color, t_buf, msg, buf);
+        fprintf(log_fp, "%s[%s] [%s] %s"C_NONE"\n", color, t_buf, msg, buf);
     }
+    fflush(log_fp);
     if(loglevel > ERROR) {
         exit(1);
     }

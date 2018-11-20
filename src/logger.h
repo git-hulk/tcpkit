@@ -16,6 +16,10 @@
 
 #ifndef TCPKIT_LOGGER_H
 #define TCPKIT_LOGGER_H
+
+#include <stdio.h>
+#include <stdlib.h>
+
 #define C_RED "\033[31m"
 #define C_GREEN "\033[32m"
 #define C_YELLOW "\033[33m"
@@ -33,7 +37,6 @@ enum LEVEL {
 
 void rlog(char *fmt, ...);
 void alog(enum LEVEL loglevel, char *fmt, ...);
-void set_log_file(char *filename);
-void set_log_level(enum LEVEL level);
+void set_log_fp(FILE *fp);
 
 #endif //TCPKIT_LOGGER_H
