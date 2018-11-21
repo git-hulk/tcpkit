@@ -15,6 +15,7 @@
  **/
 
 #include <poll.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -182,17 +183,12 @@ void server_create_stats_thread(server *srv) {
 }
 
 int server_listen(int port) {
-    int listen_fd, rc, enable = 1;
+    int listen_fd, rc;
     struct sockaddr_in sin;
 
     listen_fd = socket(PF_INET, SOCK_STREAM, 0);
     if (listen_fd == -1)  {
         return -1;
-    }
-    rc = setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,(char*)&enable, sizeof(enable));
-    if (rc < 0) {
-        close(listen_fd);
-       return -1;
     }
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
@@ -200,11 +196,13 @@ int server_listen(int port) {
     sin.sin_port = htons(port);
     rc = bind(listen_fd, (struct sockaddr *)&sin, sizeof(sin));
     if (rc < 0) {
-       return -1;
+        alog(FATAL, "Failed to bind stats port, err: %s", strerror(errno));
+        return -1;
     }
     rc = listen(listen_fd, 511);
     if (rc < 0) {
-       return -1;
+        alog(FATAL, "Failed to listen, err: %s", strerror(errno));
+        return -1;
     }
     return listen_fd;
 }
