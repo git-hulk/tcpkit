@@ -75,7 +75,7 @@ static void server_print_latency_stats(server *srv) {
     for (i = 0; i < array_used(srv->opts->ports); i++) {
         if (srv->st->latencies[i].total_reqs == 0) continue;
         average_latency = srv->st->latencies[i].total_costs / srv->st->latencies[i].total_reqs;
-        rlog("tcp port: %d, total requests: %lld, average latency: %.3f ms, slow threshod: %d ms, slow requests: %lld",
+        rlog("tcp port: %d, total requests: %" PRId64 ", average latency: %.3f ms, slow threshod: %d ms, slow requests: %" PRId64,
              *(int *) array_pos(srv->opts->ports, i),
              srv->st->latencies[i].total_reqs,
              average_latency/1000.0,
@@ -119,10 +119,10 @@ char *server_stats_to_json(server *svr) {
     size = (N_BUCKET* 20 + 2 * 20 + 128) * st->n_latency+256;
     buf = malloc(size);
     n += snprintf(buf, size,
-                  "{\"in_packets\":%lld,"
-                  "\"out_packets\":%lld,"
-                  "\"in_bytes\":%lld,"
-                  "\"out_bytes\":%lld,"
+                  "{\"in_packets\":%" PRId64 ","
+                  "\"out_packets\":%" PRId64 ","
+                  "\"in_bytes\":%" PRId64 ","
+                  "\"out_bytes\":%" PRId64 ","
                   " \"ports\":",
                   st->req_packets,
                   st->rsp_packets,
@@ -131,13 +131,13 @@ char *server_stats_to_json(server *svr) {
     buf[n++] = '[';
     for (i = 0; i < st->n_latency; i++) {
         n += snprintf(buf+n, size-n,
-                      "{\"%d\":{\"total_reqs\": %lld,\"total_costs\":%lld, \"slow_reqs\":%lld,\"latencies\":[",
+                      "{\"%d\":{\"total_reqs\": %" PRId64 ",\"total_costs\":%" PRId64 ", \"slow_reqs\":%" PRId64 ",\"latencies\":[",
                       *(int*)array_pos(svr->opts->ports, i),
                       st->latencies[i].total_reqs,
                       st->latencies[i].total_costs,
                       st->latencies[i].slow_counts);
         for (j = 0; j < N_BUCKET; j++) {
-            n += snprintf(buf+n, size-n, "%lld,", st->latencies[i].buckets[j]);
+            n += snprintf(buf+n, size-n, "%" PRId64 ",", st->latencies[i].buckets[j]);
         }
         buf[n-1] = ']';
         buf[n++] = '}';
