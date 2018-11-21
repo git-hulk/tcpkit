@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <inttypes.h>
 #include <sys/socket.h>
 
 #include <lua.h>
