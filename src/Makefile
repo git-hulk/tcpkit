@@ -1,7 +1,8 @@
 CC = gcc
 CFLAGS = -g -Wall
-CINCLUDES = -I../deps/libpcap/ -I../deps/lua/src
-CLIBS = ../deps/libpcap/libpcap.a ../deps/lua/src/liblua.a
+LDFLAGS = 
+CINCLUDES = -I../deps/libpcap/ -I../deps/lua/src -I../deps/libcircllhist
+CLIBS = ../deps/libpcap/libpcap.a ../deps/lua/src/liblua.a ../deps/libcircllhist/circllhist.o
 LOAD_LIBS=-lm -ldl -lpthread
 
 INSTALL=/usr/bin/install
@@ -21,7 +22,7 @@ all: deps tcpkit
 include dep.mk
 
 tcpkit: $(OBJS)
-	$(CC) $(CFLAGS) -o $(PROG) $(OBJS) $(CINCLUDES) $(CLIBS) $(LOAD_LIBS)
+	$(CC) $(CFLAGS) -o $(PROG) $(OBJS) $(CINCLUDES) $(CLIBS) $(LDFLAGS) $(LOAD_LIBS)
 
 %.o: %.c
 	$(TCPKIT_CC) -c $<
@@ -32,6 +33,7 @@ dep.mk:
 deps: nop
 	@cd ../deps/libpcap/  && ./configure --enable-dbus=no && make
 	@cd ../deps/lua/src && make a
+	@cd ../deps/libcircllhist && make circllhist.o
 
 clean:
 	- rm -rf $(PROG) && rm -rf  *.o

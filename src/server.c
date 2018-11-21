@@ -84,6 +84,7 @@ static void server_print_latency_stats(server *srv) {
         );
 
         for (j = 0; j < N_BUCKET; j++) {
+            hist_clear(srv->st->latencies[i].lathist);
             if (srv->st->latencies[i].buckets[j] == 0) continue;
             if (j >= 1) {
                 rlog("%s~%s: %lld", latency_buckets_name[j-1], latency_buckets_name[j],
@@ -131,15 +132,37 @@ char *server_stats_to_json(server *svr) {
     buf[n++] = '[';
     for (i = 0; i < st->n_latency; i++) {
         n += snprintf(buf+n, size-n,
-                      "{\"%d\":{\"total_reqs\": %" PRId64 ",\"total_costs\":%" PRId64 ", \"slow_reqs\":%" PRId64 ",\"latencies\":[",
+                      "{\"%d\":{\"total_reqs\": %" PRId64 ",\"total_costs\":%" PRId64 ", \"slow_reqs\":%" PRId64,
                       *(int*)array_pos(svr->opts->ports, i),
                       st->latencies[i].total_reqs,
                       st->latencies[i].total_costs,
                       st->latencies[i].slow_counts);
+
+        /* Fixed latecy buckets */
+        n += snprintf(buf+n, size-n, ",\"latencies\":[");
         for (j = 0; j < N_BUCKET; j++) {
             n += snprintf(buf+n, size-n, "%" PRId64 ",", st->latencies[i].buckets[j]);
         }
         buf[n-1] = ']';
+
+        /* Log-linear latency buckets */
+        n += snprintf(buf+n, size-n, ",\"latency\":{\"_type\":\"h\",\"_value\":[");
+        for (j = 0; j < hist_bucket_count(st->latencies[i].lathist); j++) {
+            hist_bucket_t hb;
+            uint64_t count;
+            char bname[32];
+            hist_bucket_to_string(hb, bname);
+            if(n+64 > size) {
+              size *= 2;
+              buf = realloc(buf, size);
+            }
+            hist_bucket_idx_bucket(st->latencies[i].lathist, j, &hb, &count);
+            n += snprintf(buf+n, size-n, "%s\"H[%s]=%" PRIu64 "\"", j ? "," : "",
+                          bname, count);
+        }
+        buf[n++] = ']';
+        buf[n++] = '}';
+
         buf[n++] = '}';
         buf[n++] = '}';
         buf[n++] = ',';
