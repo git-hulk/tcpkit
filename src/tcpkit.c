@@ -103,7 +103,7 @@ static options* parse_options(int argc, char **argv) {
     opts->threshold_ms = 0;
     opts->stats_port = 33333;
     opts->threshold_ms = 50;
-    opts->buffer_size = 125 *1024 * 1024;
+    opts->buffer_size = 256*1024 * 1024;
     while((ch = getopt(argc, argv, "s:p:P:r:t:m:w:i:S:B:o:udh")) != -1) {
         switch(ch) {
             case 's': opts->servers = split_string(optarg, ','); break;
