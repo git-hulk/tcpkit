@@ -6927,8 +6927,8 @@ fi
 			# PowerPC, and x86, with 32-bit PowerPC first.
 			# (I'm guessing that's what Apple does.)
 			#
-			V_CCOPT="$V_CCOPT -arch ppc -arch ppc64 -arch i386"
-			LDFLAGS="$LDFLAGS -arch ppc -arch ppc64 -arch i386"
+			V_CCOPT="$V_CCOPT -arch ppc -arch ppc64"
+			LDFLAGS="$LDFLAGS -arch ppc -arch ppc64"
 			;;
 
 		darwin8.*)
@@ -6938,8 +6938,8 @@ fi
 			# PowerPC, x86, and x86-64, and with 32-bit PowerPC
 			# first.  (I'm guessing that's what Apple does.)
 			#
-			V_CCOPT="$V_CCOPT -arch ppc -arch ppc64 -arch i386 -arch x86_64"
-			LDFLAGS="$LDFLAGS -arch ppc -arch ppc64 -arch i386 -arch x86_64"
+			V_CCOPT="$V_CCOPT -arch ppc -arch ppc64 -arch x86_64"
+			LDFLAGS="$LDFLAGS -arch ppc -arch ppc64 -arch x86_64"
 			;;
 
 		darwin9.*)
@@ -6948,8 +6948,8 @@ fi
 			# PowerPC, x86, and x86-64, with 32-bit PowerPC
 			# first.  (That's what Apple does.)
 			#
-			V_CCOPT="$V_CCOPT -arch ppc -arch ppc64 -arch i386 -arch x86_64"
-			LDFLAGS="$LDFLAGS -arch ppc -arch ppc64 -arch i386 -arch x86_64"
+			V_CCOPT="$V_CCOPT -arch ppc -arch ppc64 -arch x86_64"
+			LDFLAGS="$LDFLAGS -arch ppc -arch ppc64 -arch x86_64"
 			;;
 
 		darwin10.*)
