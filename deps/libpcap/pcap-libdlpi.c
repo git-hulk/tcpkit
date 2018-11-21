@@ -24,13 +24,8 @@
  * Packet capture routines for DLPI using libdlpi under SunOS 5.11.
  */
 
-#ifndef lint
-static const char rcsid[] _U_ =
-	"@(#) $Header: /tcpdump/master/libpcap/pcap-libdlpi.c,v 1.6 2008-04-14 20:40:58 guy Exp $ (LBL)";
-#endif
-
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include <config.h>
 #endif
 
 #include <sys/types.h>
@@ -101,26 +96,28 @@ static int
 pcap_activate_libdlpi(pcap_t *p)
 {
 	struct pcap_dlpi *pd = p->priv;
+	int status = 0;
 	int retv;
 	dlpi_handle_t dh;
 	dlpi_info_t dlinfo;
-	int err = PCAP_ERROR;
 
 	/*
 	 * Enable Solaris raw and passive DLPI extensions;
 	 * dlpi_open() will not fail if the underlying link does not support
 	 * passive mode. See dlpi(7P) for details.
 	 */
-	retv = dlpi_open(p->opt.source, &dh, DLPI_RAW|DLPI_PASSIVE);
+	retv = dlpi_open(p->opt.device, &dh, DLPI_RAW|DLPI_PASSIVE);
 	if (retv != DLPI_SUCCESS) {
 		if (retv == DLPI_ELINKNAMEINVAL || retv == DLPI_ENOLINK)
-			err = PCAP_ERROR_NO_SUCH_DEVICE;
+			status = PCAP_ERROR_NO_SUCH_DEVICE;
 		else if (retv == DL_SYSERR &&
 		    (errno == EPERM || errno == EACCES))
-			err = PCAP_ERROR_PERM_DENIED;
-		pcap_libdlpi_err(p->opt.source, "dlpi_open", retv,
+			status = PCAP_ERROR_PERM_DENIED;
+		else
+			status = PCAP_ERROR;
+		pcap_libdlpi_err(p->opt.device, "dlpi_open", retv,
 		    p->errbuf);
-		return (err);
+		return (status);
 	}
 	pd->dlpi_hd = dh;
 
@@ -129,20 +126,32 @@ pcap_activate_libdlpi(pcap_t *p)
 		 * This device exists, but we don't support monitor mode
 		 * any platforms that support DLPI.
 		 */
-		err = PCAP_ERROR_RFMON_NOTSUP;
+		status = PCAP_ERROR_RFMON_NOTSUP;
 		goto bad;
 	}
 
 	/* Bind with DLPI_ANY_SAP. */
 	if ((retv = dlpi_bind(pd->dlpi_hd, DLPI_ANY_SAP, 0)) != DLPI_SUCCESS) {
-		pcap_libdlpi_err(p->opt.source, "dlpi_bind", retv, p->errbuf);
+		status = PCAP_ERROR;
+		pcap_libdlpi_err(p->opt.device, "dlpi_bind", retv, p->errbuf);
 		goto bad;
 	}
 
+	/*
+	 * Turn a negative snapshot value (invalid), a snapshot value of
+	 * 0 (unspecified), or a value bigger than the normal maximum
+	 * value, into the maximum allowed value.
+	 *
+	 * If some application really *needs* a bigger snapshot
+	 * length, we should just increase MAXIMUM_SNAPLEN.
+	 */
+	if (p->snapshot <= 0 || p->snapshot > MAXIMUM_SNAPLEN)
+		p->snapshot = MAXIMUM_SNAPLEN;
+
 	/* Enable promiscuous mode. */
 	if (p->opt.promisc) {
-		err = dlpromiscon(p, DL_PROMISC_PHYS);
-		if (err < 0) {
+		retv = dlpromiscon(p, DL_PROMISC_PHYS);
+		if (retv < 0) {
 			/*
 			 * "You don't have permission to capture on
 			 * this device" and "you don't have permission
@@ -156,57 +165,71 @@ pcap_activate_libdlpi(pcap_t *p)
 			 * XXX - you might have to capture in
 			 * promiscuous mode to see outgoing packets.
 			 */
-			if (err == PCAP_ERROR_PERM_DENIED)
-				err = PCAP_ERROR_PROMISC_PERM_DENIED;
+			if (retv == PCAP_ERROR_PERM_DENIED)
+				status = PCAP_ERROR_PROMISC_PERM_DENIED;
+			else
+				status = retv;
 			goto bad;
 		}
 	} else {
 		/* Try to enable multicast. */
-		err = dlpromiscon(p, DL_PROMISC_MULTI);
-		if (err < 0)
+		retv = dlpromiscon(p, DL_PROMISC_MULTI);
+		if (retv < 0) {
+			status = retv;
 			goto bad;
+		}
 	}
 
 	/* Try to enable SAP promiscuity. */
-	err = dlpromiscon(p, DL_PROMISC_SAP);
-	if (err < 0) {
+	retv = dlpromiscon(p, DL_PROMISC_SAP);
+	if (retv < 0) {
 		/*
 		 * Not fatal, since the DL_PROMISC_PHYS mode worked.
 		 * Report it as a warning, however.
 		 */
 		if (p->opt.promisc)
-			err = PCAP_WARNING;
-		else
+			status = PCAP_WARNING;
+		else {
+			status = retv;
 			goto bad;
+		}
 	}
 
 	/* Determine link type.  */
 	if ((retv = dlpi_info(pd->dlpi_hd, &dlinfo, 0)) != DLPI_SUCCESS) {
-		pcap_libdlpi_err(p->opt.source, "dlpi_info", retv, p->errbuf);
+		status = PCAP_ERROR;
+		pcap_libdlpi_err(p->opt.device, "dlpi_info", retv, p->errbuf);
 		goto bad;
 	}
 
-	if (pcap_process_mactype(p, dlinfo.di_mactype) != 0)
+	if (pcap_process_mactype(p, dlinfo.di_mactype) != 0) {
+		status = PCAP_ERROR;
 		goto bad;
+	}
 
 	p->fd = dlpi_fd(pd->dlpi_hd);
 
 	/* Push and configure bufmod. */
-	if (pcap_conf_bufmod(p, p->snapshot) != 0)
+	if (pcap_conf_bufmod(p, p->snapshot) != 0) {
+		status = PCAP_ERROR;
 		goto bad;
+	}
 
 	/*
 	 * Flush the read side.
 	 */
 	if (ioctl(p->fd, I_FLUSH, FLUSHR) != 0) {
-		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "FLUSHR: %s",
-		    pcap_strerror(errno));
+		status = PCAP_ERROR;
+		pcap_fmt_errmsg_for_errno(p->errbuf, PCAP_ERRBUF_SIZE,
+		    errno, "FLUSHR");
 		goto bad;
 	}
 
 	/* Allocate data buffer. */
-	if (pcap_alloc_databuf(p) != 0)
+	if (pcap_alloc_databuf(p) != 0) {
+		status = PCAP_ERROR;
 		goto bad;
+	}
 
 	/*
 	 * "p->fd" is a FD for a STREAMS device, so "select()" and
@@ -224,10 +247,10 @@ pcap_activate_libdlpi(pcap_t *p)
 	p->stats_op = pcap_stats_dlpi;
 	p->cleanup_op = pcap_cleanup_libdlpi;
 
-	return (0);
+	return (status);
 bad:
 	pcap_cleanup_libdlpi(p);
-	return (err);
+	return (status);
 }
 
 #define STRINGIFY(n)	#n
@@ -246,9 +269,43 @@ dlpromiscon(pcap_t *p, bpf_u_int32 level)
 			err = PCAP_ERROR_PERM_DENIED;
 		else
 			err = PCAP_ERROR;
-		pcap_libdlpi_err(p->opt.source, "dlpi_promiscon" STRINGIFY(level),
+		pcap_libdlpi_err(p->opt.device, "dlpi_promiscon" STRINGIFY(level),
 		    retv, p->errbuf);
 		return (err);
+	}
+	return (0);
+}
+
+/*
+ * Presumably everything returned by dlpi_walk() is a DLPI device,
+ * so there's no work to be done here to check whether name refers
+ * to a DLPI device.
+ */
+static int
+is_dlpi_interface(const char *name _U_)
+{
+	return (1);
+}
+
+static int
+get_if_flags(const char *name _U_, bpf_u_int32 *flags _U_, char *errbuf _U_)
+{
+	/*
+	 * Nothing we can do other than mark loopback devices as "the
+	 * connected/disconnected status doesn't apply".
+	 *
+	 * XXX - on Solaris, can we do what the dladm command does,
+	 * i.e. get a connected/disconnected indication from a kstat?
+	 * (Note that you can also get the link speed, and possibly
+	 * other information, from a kstat as well.)
+	 */
+	if (*flags & PCAP_IF_LOOPBACK) {
+		/*
+		 * Loopback devices aren't wireless, and "connected"/
+		 * "disconnected" doesn't apply to them.
+		 */
+		*flags |= PCAP_IF_CONNECTION_STATUS_NOT_APPLICABLE;
+		return (0);
 	}
 	return (0);
 }
@@ -259,7 +316,7 @@ dlpromiscon(pcap_t *p, bpf_u_int32 level)
  * additional network links present in the system.
  */
 int
-pcap_platform_finddevs(pcap_if_t **alldevsp, char *errbuf)
+pcap_platform_finddevs(pcap_if_list_t *devlistp, char *errbuf)
 {
 	int retv = 0;
 
@@ -267,20 +324,39 @@ pcap_platform_finddevs(pcap_if_t **alldevsp, char *errbuf)
 	linkwalk_t	lw = {NULL, 0};
 	int 		save_errno;
 
+	/*
+	 * Get the list of regular interfaces first.
+	 */
+	if (pcap_findalldevs_interfaces(devlistp, errbuf,
+	    is_dlpi_interface, get_if_flags) == -1)
+		return (-1);	/* failure */
+
 	/* dlpi_walk() for loopback will be added here. */
 
+	/*
+	 * Find all DLPI devices in the current zone.
+	 *
+	 * XXX - will pcap_findalldevs_interfaces() find any devices
+	 * outside the current zone?  If not, the only reason to call
+	 * it would be to get the interface addresses.
+	 */
 	dlpi_walk(list_interfaces, &lw, 0);
 
 	if (lw.lw_err != 0) {
-		snprintf(errbuf, PCAP_ERRBUF_SIZE,
-		    "dlpi_walk: %s", pcap_strerror(lw.lw_err));
+		pcap_fmt_errmsg_for_errno(errbuf, PCAP_ERRBUF_SIZE,
+		    lw.lw_err, "dlpi_walk");
 		retv = -1;
 		goto done;
 	}
 
 	/* Add linkname if it does not exist on the list. */
 	for (entry = lw.lw_list; entry != NULL; entry = entry->lnl_next) {
-		if (pcap_add_if(alldevsp, entry->linkname, 0, NULL, errbuf) < 0)
+		/*
+		 * If it isn't already in the list of devices, try to
+		 * add it.
+		 */
+		if (find_or_add_dev(devlistp, entry->linkname, 0, get_if_flags,
+		    NULL, errbuf) == NULL)
 			retv = -1;
 	}
 done:
@@ -325,7 +401,7 @@ pcap_read_libdlpi(pcap_t *p, int count, pcap_handler callback, u_char *user)
 		}
 
 		msglen = p->bufsize;
-		bufp = p->buffer + p->offset;
+		bufp = (u_char *)p->buffer + p->offset;
 
 		retv = dlpi_recv(pd->dlpi_hd, NULL, NULL, bufp,
 		    &msglen, -1, NULL);
@@ -392,19 +468,28 @@ pcap_cleanup_libdlpi(pcap_t *p)
 static void
 pcap_libdlpi_err(const char *linkname, const char *func, int err, char *errbuf)
 {
-	snprintf(errbuf, PCAP_ERRBUF_SIZE, "libpcap: %s failed on %s: %s",
+	pcap_snprintf(errbuf, PCAP_ERRBUF_SIZE, "libpcap: %s failed on %s: %s",
 	    func, linkname, dlpi_strerror(err));
 }
 
 pcap_t *
-pcap_create_interface(const char *device, char *ebuf)
+pcap_create_interface(const char *device _U_, char *ebuf)
 {
 	pcap_t *p;
 
-	p = pcap_create_common(device, ebuf, sizeof (struct pcap_dlpi));
+	p = pcap_create_common(ebuf, sizeof (struct pcap_dlpi));
 	if (p == NULL)
 		return (NULL);
 
 	p->activate_op = pcap_activate_libdlpi;
 	return (p);
+}
+
+/*
+ * Libpcap version string.
+ */
+const char *
+pcap_lib_version(void)
+{
+	return (PCAP_VERSION_STRING);
 }
