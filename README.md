@@ -5,7 +5,7 @@ A tool to capture tcp packets and analyze the packets with LUA.
 ## Usage
 
 ```
-TCPKIT is a tool to capture tcp packets and analyze the packets with lua
+TCPKIT is a tool to capture tcp packets and analyze the packets with lua.
 	-s which server ip to monitor, e.g. 192.168.1.2,192.168.1.3
 	-p which n_latency to monitor, e.g. 6379,6380
 	-P stats listen port, default is 33333
@@ -16,7 +16,7 @@ TCPKIT is a tool to capture tcp packets and analyze the packets with lua
 	-m protocol mode, raw,redis,memcached,dns
 	-w dump packets to 'savefile'
 	-S lua script path, default is ../scripts/example.lua
-	-B operating system capture buffer size, in units of KiB (1024 bytes).
+	-B operating system capture buffer size, in units of KiB (1024 bytes)
 	-o log output file
 	-u udp
 	-v version

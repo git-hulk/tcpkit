@@ -1,5 +1,5 @@
 /**
- *   tcpkit --  toolkit to analyze tcp packet
+ *   tcpkit --  toolkit to analyze tcp packets
  *   Copyright (C) 2018  @git-hulk
  *
  *   This program is free software; you can redistribute it and/or modify
@@ -47,7 +47,7 @@ void signal_handler(int sig) {
 }
 
 static void usage() {
-    fprintf(stderr, "TCPKIT is a tool to capature the tcp packets, and analyze the packets with lua\n");
+    fprintf(stderr, "TCPKIT is a tool to capture tcp packets and analyze the packets with lua.\n");
     fprintf(stderr, "\t-s which server ip to monitor, e.g. 192.168.1.2,192.168.1.3\n");
     fprintf(stderr, "\t-p which n_latency to monitor, e.g. 6379,6380\n");
     fprintf(stderr, "\t-P stats listen port, default is 33333\n");
@@ -58,7 +58,7 @@ static void usage() {
     fprintf(stderr, "\t-m protocol mode, raw,redis,memcached\n");
     fprintf(stderr, "\t-w dump packets to 'savefile'\n");
     fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
-    fprintf(stderr, "\t-B operating system capture buffer size, in units of KiB (1024 bytes). \n");
+    fprintf(stderr, "\t-B operating system capture buffer size, in units of KiB (1024 bytes)\n");
     fprintf(stderr, "\t-o log output file\n");
     fprintf(stderr, "\t-u udp\n");
     fprintf(stderr, "\t-v version\n");
