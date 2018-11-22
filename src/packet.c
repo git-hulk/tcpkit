@@ -232,11 +232,15 @@ static void process_udp_packet(server *srv, user_packet *packet) {
 }
 
 static int8_t is_request(server *srv, user_packet *packet) {
+    int i;
+
     if (packet->sport != packet->dport) {
         return port_in_target(srv, packet->dport) != -1;
     }
-    // TODO; corner case src port == dst port
-    return 1;
+    for (i = 0; i < srv->n_server; i++) {
+        if (srv->servers[i].s_addr == packet->dip.s_addr) return 1;
+    }
+    return 0;
 }
 
 void extract_packet_handler(unsigned char *user,

@@ -26,6 +26,7 @@
 #include <lua.h>
 #include <pcap/pcap.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "server.h"
 #include "tcpikt.h"
@@ -36,12 +37,37 @@
 #include "logger.h"
 
 int server_init(server *srv) {
+    int i, n_server;
+    char *server_str;
+    struct array *local_addresses;
+
     srv->stop = 0;
     srv->req_ht = hashtable_create(102400);
     if (!srv->req_ht) return -1;
     srv->st = stats_create(array_used(srv->opts->ports));
     if (!srv->st) return -1;
     server_create_stats_thread(srv);
+
+    srv->n_server = 0;
+    srv->servers = NULL;
+    n_server = array_used(srv->opts->servers);
+    if (n_server > 0) {
+        srv->n_server = n_server;
+        srv->servers = malloc(n_server * sizeof(struct in_addr));
+        for (i = 0; i < n_server; i++) {
+            server_str = *(char **)array_pos(srv->opts->servers, i);
+            inet_pton(AF_INET, server_str, &srv->servers[i]);
+        }
+    } else {
+        // fetch server ip from nic
+        local_addresses = get_addresses_from_device();
+        srv->n_server = array_used(local_addresses);
+        srv->servers = malloc(srv->n_server * sizeof(struct in_addr));
+        for (i = 0; i < srv->n_server; i++) {
+            memcpy(&srv->servers[i], (struct in_addr*)array_pos(local_addresses, i),
+                sizeof(struct in_addr));
+        }
+    }
     return 0;
 }
 
@@ -55,6 +81,7 @@ void server_deinit(server *srv) {
     if (srv->filter) free(srv->filter);
     if (srv->st) stats_destroy(srv->st);
     if (srv->req_ht) hashtable_destroy(srv->req_ht);
+    if (srv->servers) free(srv->servers);
 
     options *opts = srv->opts;
     if (opts) {
