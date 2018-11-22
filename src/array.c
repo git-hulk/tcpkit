@@ -17,8 +17,7 @@
 #include <stdlib.h>
 #include "array.h"
 
-struct array *
-array_alloc(int entry_size, int size) {
+struct array *array_alloc(int entry_size, int size) {
     struct array *arr;
     if (entry_size <= 0 || size < 0) {
         return NULL;
@@ -31,16 +30,14 @@ array_alloc(int entry_size, int size) {
     return arr;
 }
 
-int
-array_used(struct array *arr) {
+int array_used(struct array *arr) {
     if (arr) {
         return arr->used;
     }
     return 0;
 }
 
-char *
-array_push(struct array *arr) {
+char *array_push(struct array *arr) {
     int new_size;
     char *element;
 
@@ -57,13 +54,11 @@ array_push(struct array *arr) {
     return element;
 }
 
-char *
-array_pos(struct array *arr, int pos) {
+char *array_pos(struct array *arr, int pos) {
     if (!arr || pos < 0 || pos >= arr->used) return NULL;
     return ((char *)arr->entries + pos * arr->entry_size);
 }
 
-void
-array_dealloc(struct array *arr) {
+void array_dealloc(struct array *arr) {
     if (arr) return free(arr);
 }

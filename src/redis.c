@@ -41,11 +41,8 @@ request *parse_redis_request(char *payload, int size) {
         }
         req->buf[n] = '\0';
         if (n > 0) return req;
-        free(req);
-        return NULL;
     } else {
-        pos = strstr(payload, "\r\n");
-        if (pos) {
+        if ((pos = strstr(payload, "\r\n")) != NULL) {
             copy_size = (pos-payload) < buf_size ? (pos-payload) : buf_size;
             memcpy(req->buf, payload, copy_size);
             req->buf[copy_size] = '\0';
