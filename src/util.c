@@ -16,6 +16,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "util.h"
 #include "array.h"
@@ -62,4 +67,27 @@ void free_split_string(struct array *arr) {
         free(token);
     }
     array_dealloc(arr);
+}
+
+struct array *get_addresses_from_device() {
+    struct ifaddrs *if_addrs, *ifa;
+    struct in_addr in_addr;
+    struct array *addrs;
+    char *elem;
+
+    if (getifaddrs(&if_addrs) == -1) {
+        return NULL;
+    }
+    addrs = array_alloc(sizeof(struct in_addr), 5);
+    for (ifa = if_addrs; ifa; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr) continue;
+        if (ifa->ifa_addr->sa_family == AF_INET || ifa->ifa_addr->sa_family == AF_INET6) {
+            in_addr = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
+            if (!in_addr.s_addr) continue;
+            elem = array_push(addrs);
+            memcpy(elem, &in_addr, sizeof(struct in_addr));
+        }
+    }
+    freeifaddrs(if_addrs);
+    return addrs;
 }

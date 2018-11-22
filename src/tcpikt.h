@@ -52,6 +52,8 @@ typedef struct {
     hashtable *req_ht;
     pthread_t stats_tid;
     int stop;
+    struct in_addr *servers;
+    int n_server;
 } server;
 
 typedef enum {

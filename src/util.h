@@ -17,6 +17,9 @@
 #ifndef TCPKIT_UTIL_H
 #define TCPKIT_UTIL_H
 
+#include "array.h"
+
 struct array *split_string(char *input, char delim);
 void free_split_string(struct array *arr);
+struct array *get_addresses_from_device();
 #endif //TCPKIT_UTIL_H
