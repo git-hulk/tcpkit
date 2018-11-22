@@ -136,17 +136,19 @@ static void push_packet_to_vm(lua_State *vm, user_packet *packet) {
     vm_need_gc(vm);
 }
 
-static void push_tcp_packet_to_user(server *srv, user_packet *packet) {
-    char *type = "REQ";
+static void push_packet_to_user(server *srv, user_packet *packet) {
+    char t_buf[64], *type = "REQ";
     if (srv->vm) {
         push_packet_to_vm(srv->vm, packet);
         return;
     }
     if (packet->size == 0) return;
+
+    strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&packet->tv->tv_sec));
     if (!packet->request) type = "RSP";
     if (packet->tcp) {
         rlog("%s %s:%d=>%s:%d %s %u %u %d %u %.*s",
-             "abc",
+             t_buf,
              inet_ntoa(packet->sip),
              packet->sport,
              inet_ntoa(packet->dip),
@@ -161,7 +163,7 @@ static void push_tcp_packet_to_user(server *srv, user_packet *packet) {
         );
     } else {
         rlog("%s %s:%d=>%s:%d %s %u %.*s",
-             "abc",
+             t_buf,
              inet_ntoa(packet->sip),
              packet->sport,
              inet_ntoa(packet->dip),
@@ -219,14 +221,22 @@ static void record_simple_latency(server *srv, user_packet *packet) {
 
 static void process_tcp_packet(server *srv, user_packet *packet) {
     if (srv->opts->mode == P_RAW) {
-        push_tcp_packet_to_user(srv, packet);
+        push_packet_to_user(srv, packet);
     } else {
         record_simple_latency(srv, packet);
     }
 }
 
 static void process_udp_packet(server *srv, user_packet *packet) {
-    push_tcp_packet_to_user(srv, packet);
+    push_packet_to_user(srv, packet);
+}
+
+static int8_t is_request(server *srv, user_packet *packet) {
+    if (packet->sport != packet->dport) {
+        return port_in_target(srv, packet->dport) != -1;
+    }
+    // TODO; corner case src port == dst port
+    return 1;
 }
 
 void extract_packet_handler(unsigned char *user,
@@ -248,19 +258,22 @@ void extract_packet_handler(unsigned char *user,
         default:
             return; // do nothing with unknown link type packet
     }
+    if (ip_packet->ip_p != IPPROTO_TCP && ip_packet->ip_p != IPPROTO_UDP) {
+        return;
+    }
     switch (ip_packet->ip_p) {
         case IPPROTO_TCP:
             upacket = gen_tcp_packet(&header->ts, ip_packet);
-            upacket->request = port_in_target(srv, upacket->dport) != -1;
-            stats_update_bytes(srv->st, upacket->request, upacket->size);
+            upacket->request = is_request(srv, upacket);
             process_tcp_packet(srv, upacket);
+            stats_update_bytes(srv->st, upacket->request, upacket->size);
             free(upacket);
             break;
         case IPPROTO_UDP:
             upacket = gen_udp_packet(&header->ts, ip_packet);
-            upacket->request = port_in_target(srv, upacket->dport)!=-1;
-            stats_update_bytes(srv->st, upacket->request, upacket->size);
+            upacket->request = is_request(srv, upacket);
             process_udp_packet(srv, upacket);
+            stats_update_bytes(srv->st, upacket->request, upacket->size);
             free(upacket);
             break;
         default:
