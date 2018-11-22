@@ -93,13 +93,13 @@ void hashtable_destroy(hashtable *ht) {
 
 int hashtable_add(hashtable *ht, char *key, void *value) {
     int bucket;
-    entry *next;
+    entry *current;
 
     bucket = hash_function(key, strlen(key)) % ht->nbucket;
-    next = ht->buckets[bucket];
-    while (next) {
-        if (!strncasecmp(key, next->key, strlen(next->key))) return 0;
-        next = next->next;
+    current = ht->buckets[bucket];
+    while (current) {
+        if (!strncasecmp(key, current->key, strlen(current->key))) return 0;
+        current = current->next;
     }
     entry *e = malloc(sizeof(*e));
     e->value = value;
