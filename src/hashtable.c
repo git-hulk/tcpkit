@@ -143,9 +143,10 @@ int hashtable_del(hashtable *ht, char *key) {
         current_key_size = strlen(current->key);
         if (key_size == current_key_size
             && !strncmp(key, current->key, key_size)) {
-            prev->next = current->next;
             if (current == ht->buckets[bucket]) {
-               ht->buckets[bucket] = NULL;
+                ht->buckets[bucket] = current->next;
+            } else {
+                prev->next = current->next;
             }
             free(current->key);
             ht->free ? ht->free(current->value):free(current->value);
