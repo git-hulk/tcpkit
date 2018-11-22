@@ -92,13 +92,18 @@ void hashtable_destroy(hashtable *ht) {
 }
 
 int hashtable_add(hashtable *ht, char *key, void *value) {
-    int bucket;
+    int bucket, key_size, current_key_size;
     entry *current;
 
+    key_size = strlen(key);
     bucket = hash_function(key, strlen(key)) % ht->nbucket;
     current = ht->buckets[bucket];
     while (current) {
-        if (!strncasecmp(key, current->key, strlen(current->key))) return 0;
+        current_key_size = strlen(current->key);
+        if (key_size == current_key_size
+            && !strncmp(key, current->key, key_size)){
+            return 0;
+        }
         current = current->next;
     }
     entry *e = malloc(sizeof(*e));
@@ -110,14 +115,17 @@ int hashtable_add(hashtable *ht, char *key, void *value) {
 }
 
 void *hashtable_get(hashtable *ht, char *key) {
-    int bucket;
+    int bucket, key_size, current_key_size;
     entry *current;
 
-    bucket = hash_function(key, strlen(key)) % ht->nbucket;
+    key_size = strlen(key);
+    bucket = hash_function(key, key_size) % ht->nbucket;
     current = ht->buckets[bucket];
     while(current) {
-        if (!strncasecmp(key, current->key, strlen(current->key))) {
-           return current->value;
+        current_key_size = strlen(current->key);
+        if (current_key_size == key_size
+            && !strncmp(key, current->key, key_size)) {
+            return current->value;
         }
         current = current->next;
     }
@@ -125,24 +133,27 @@ void *hashtable_get(hashtable *ht, char *key) {
 }
 
 int hashtable_del(hashtable *ht, char *key) {
-    int bucket;
-    entry *next, *prev;
+    int bucket, key_size=strlen(key), current_key_size;
+    entry *current, *prev;
 
-    bucket = hash_function(key, strlen(key)) % ht->nbucket;
-    prev = next = ht->buckets[bucket];
-    while (next) {
-        if (!strncasecmp(key, next->key, strlen(next->key))) {
-            prev->next = next->next;
-            free(next->key);
-            ht->free ? ht->free(next->value):free(next->value);
-            free(next);
-            if (prev == ht->buckets[bucket]) {
+    bucket = hash_function(key, key_size) % ht->nbucket;
+    prev = current = ht->buckets[bucket];
+
+    while (current) {
+        current_key_size = strlen(current->key);
+        if (key_size == current_key_size
+            && !strncmp(key, current->key, key_size)) {
+            prev->next = current->next;
+            if (current == ht->buckets[bucket]) {
                ht->buckets[bucket] = NULL;
             }
+            free(current->key);
+            ht->free ? ht->free(current->value):free(current->value);
+            free(current);
             return 1;
         }
-        prev = next;
-        next = next->next;
+        prev = current;
+        current = current->next;
     }
     return 0;
 }
