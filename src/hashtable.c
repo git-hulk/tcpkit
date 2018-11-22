@@ -99,6 +99,7 @@ int hashtable_add(hashtable *ht, char *key, void *value) {
     next = ht->buckets[bucket];
     while (next) {
         if (!strncasecmp(key, next->key, strlen(next->key))) return 0;
+        next = next->next;
     }
     entry *e = malloc(sizeof(*e));
     e->value = value;
