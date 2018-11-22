@@ -61,11 +61,14 @@ int server_init(server *srv) {
     } else {
         // fetch server ip from nic
         local_addresses = get_addresses_from_device();
-        srv->n_server = array_used(local_addresses);
-        srv->servers = malloc(srv->n_server * sizeof(struct in_addr));
-        for (i = 0; i < srv->n_server; i++) {
-            memcpy(&srv->servers[i], (struct in_addr*)array_pos(local_addresses, i),
-                sizeof(struct in_addr));
+        if (local_addresses) {
+            srv->n_server = array_used(local_addresses);
+            srv->servers = malloc(srv->n_server * sizeof(struct in_addr));
+            for (i = 0; i < srv->n_server; i++) {
+                memcpy(&srv->servers[i], (struct in_addr*)array_pos(local_addresses, i),
+                        sizeof(struct in_addr));
+            }
+            array_dealloc(local_addresses);
         }
     }
     return 0;
