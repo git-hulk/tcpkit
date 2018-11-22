@@ -6,7 +6,7 @@ A tool to capture tcp packets and analyze the packets with LUA.
 
 ```
 TCPKIT is a tool to capture tcp packets and analyze the packets with lua.
-	-s which server ip to monitor, e.g. 192.168.1.2,192.168.1.3
+	-s which server ip to monitor, must specify when runing in client side. e.g. 192.168.1.2,192.168.1.3 
 	-p which n_latency to monitor, e.g. 6379,6380
 	-P stats listen port, default is 33333
 	-i network card interface, e.g. bond0, lo, em0... see 'ifconfig'
@@ -36,7 +36,7 @@ $ sudo make && make install
 Supports Redis/Memcached/DNS protocol now, we take Redis as example here: 
 
 ```
-$ sudo tcpkit -i em1 -p 6379,6380,6381 -t 10 -m redis
+$ sudo tcpkit -i em1 -s 192.168.1.2 -p 6379,6380,6381 -t 10 -m redis
 ```
 
 and the request latency more than 10ms would be printed, like below:
@@ -48,6 +48,7 @@ and the request latency more than 10ms would be printed, like below:
 
 Tcpkit would print all requests if the `-t` option wasn't set.
 If tcpkit was deployed client-side, use the `-s` option to specify the server host/ip.
+> Caution: `-s` option should be specified when tcpkit is running in client side or decode packets from offline pcap.
 
 ## Use lua to analyze packets
 
