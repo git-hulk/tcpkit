@@ -157,7 +157,7 @@ char *server_stats_to_json(server *svr) {
     size = (N_BUCKET* 20 + 2 * 20 + 128) * st->n_latency+256;
     buf = malloc(size);
     n += snprintf(buf, size,
-                  "{\"type:\":\"%s\","
+                  "{\"type\":\"%s\","
                   "\"in_packets\":%" PRId64 ","
                   "\"out_packets\":%" PRId64 ","
                   "\"in_bytes\":%" PRId64 ","
