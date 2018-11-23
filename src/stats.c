@@ -72,15 +72,17 @@ void stats_incr_slow_count(stats *st, int ind) {
 
 void stats_update_latency(stats *st, int ind, int64_t latency_us) {
     int i, n;
-   st->latencies[ind].total_reqs++;
-   st->latencies[ind].total_costs += latency_us;
 
-   n = sizeof(latency_buckets)/ sizeof(latency_buckets[0]);
-   for (i = 0; i < n-1; i++) {
+    if (latency_us < 0) latency_us = 0;
+    st->latencies[ind].total_reqs++;
+    st->latencies[ind].total_costs += latency_us;
+
+    n = sizeof(latency_buckets)/ sizeof(latency_buckets[0]);
+    for (i = 0; i < n-1; i++) {
         if (latency_buckets[i] >= latency_us) {
             st->latencies[ind].buckets[i]++;
             return;
         }
-   }
+    }
     st->latencies[ind].buckets[n-1]++;
 }
