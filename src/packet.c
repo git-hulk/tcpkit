@@ -197,6 +197,10 @@ static void record_simple_latency(server *srv, user_packet *packet) {
         snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
         request *req = parse_redis_request(packet->payload, packet->size);
         if (req) {
+            if (srv->opts->mode == P_REDIS && !strncasecmp(req->buf, "REPLCONF ACK", 12)) {
+                free(req); // ingore the repl ack while it's noreply
+                return;
+            }
             req->tv = *packet->tv;
             if (!hashtable_add(srv->req_ht, key, req)) {
                free(req);
@@ -205,6 +209,7 @@ static void record_simple_latency(server *srv, user_packet *packet) {
     } else {
         snprintf(key, 64, "%s:%d => %s:%d", dip_buf, packet->dport, sip_buf, packet->sport);
         request *req = hashtable_get(srv->req_ht, key);
+        // TODO:  ignore the memcached no reply request
         if (req) {
             latency_us = (packet->tv->tv_sec - req->tv.tv_sec) * 1000000 + (packet->tv->tv_usec - req->tv.tv_usec);
             int ind = port_in_target(srv, packet->sport);
