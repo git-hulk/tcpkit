@@ -46,7 +46,6 @@ int server_init(server *srv) {
     if (!srv->req_ht) return -1;
     srv->st = stats_create(array_used(srv->opts->ports));
     if (!srv->st) return -1;
-    server_create_stats_thread(srv);
 
     srv->n_server = 0;
     srv->servers = NULL;
