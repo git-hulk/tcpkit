@@ -176,6 +176,31 @@ static void push_packet_to_user(server *srv, user_packet *packet) {
     }
 }
 
+static int is_noreply(int mode, char *req) {
+    int i, size, n;
+
+    size = strlen(req);
+    if (mode == P_REDIS) {
+        return size >= 12 && !strncasecmp(req, "REPLCONF ACK", 12);
+    } else if (mode == P_MEMCACHED) {
+        char *noreply_keys[] = {"get", "gets", "stats", "stat", "watch", "lru", "set", "add", "incr", "decr", "delete",
+            "replace", "append", "prepend", "cas", "touch", "flushall"};
+        n = sizeof(noreply_keys)/sizeof(noreply_keys[0]);
+        for (i = 0; i < n; i++) {
+            if (!strncasecmp(req, noreply_keys[i], strlen(noreply_keys[i]))) {
+                // request line didn't end with 'noreply'
+                if (i >= 6 && size > 7 && !strncasecmp(&req[size-7], "noreply", 7)) {
+                    return 1;
+                }
+                return 0;
+            }
+        }
+        // non memcached command line, treat as noreply
+        return 1;
+    }
+    return 0;
+}
+
 static void record_simple_latency(server *srv, user_packet *packet) {
     int latency_us;
     size_t size;
@@ -197,9 +222,9 @@ static void record_simple_latency(server *srv, user_packet *packet) {
         snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
         request *req = parse_redis_request(packet->payload, packet->size);
         if (req) {
-            if (srv->opts->mode == P_REDIS && !strncasecmp(req->buf, "REPLCONF ACK", 12)) {
-                free(req); // ingore the repl ack while it's noreply
-                return;
+            if (is_noreply(srv->opts->mode, req->buf)) {
+                free(req);
+                return; // don't store the noreply request
             }
             req->tv = *packet->tv;
             if (!hashtable_add(srv->req_ht, key, req)) {
@@ -209,7 +234,6 @@ static void record_simple_latency(server *srv, user_packet *packet) {
     } else {
         snprintf(key, 64, "%s:%d => %s:%d", dip_buf, packet->dport, sip_buf, packet->sport);
         request *req = hashtable_get(srv->req_ht, key);
-        // TODO:  ignore the memcached no reply request
         if (req) {
             latency_us = (packet->tv->tv_sec - req->tv.tv_sec) * 1000000 + (packet->tv->tv_usec - req->tv.tv_usec);
             int ind = port_in_target(srv, packet->sport);
