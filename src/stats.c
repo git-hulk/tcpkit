@@ -52,6 +52,10 @@ stats *stats_create(int n) {
 }
 
 void stats_destroy(stats *st) {
+   int i;
+   for (i = 0; i < st->n_latency; i++) {
+       if(st->latencies[i].lathist) hist_free(st->latencies[i].lathist);
+   }
    free(st->latencies);
    free(st);
 }
@@ -74,6 +78,8 @@ void stats_update_latency(stats *st, int ind, int64_t latency_us) {
     int i, n;
    st->latencies[ind].total_reqs++;
    st->latencies[ind].total_costs += latency_us;
+   if(!st->latencies[ind].lathist) st->latencies[ind].lathist = hist_alloc();
+   hist_insert_intscale(st->latencies[ind].lathist, latency_us, -6, 1);
 
    n = sizeof(latency_buckets)/ sizeof(latency_buckets[0]);
    for (i = 0; i < n-1; i++) {

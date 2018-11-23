@@ -18,6 +18,7 @@
 #define TCPKIT_STATS_H
 
 #include <stdint.h>
+#include <circllhist.h>
 
 #define N_BUCKET 18
 
@@ -26,6 +27,7 @@ typedef struct {
     int64_t total_costs;
     int64_t slow_counts;
     int64_t buckets[N_BUCKET];
+    histogram_t *lathist;
 }latency_stat;
 
 typedef struct {
