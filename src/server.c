@@ -149,6 +149,7 @@ char *server_stats_to_json(server *svr) {
     switch(svr->opts->mode) {
         case P_REDIS: type = "redis"; break;
         case P_MEMCACHED: type = "memcached"; break;
+        case P_HTTP: type = "http"; break;
         default: type = "raw"; break;
     }
 
