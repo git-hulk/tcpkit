@@ -197,6 +197,9 @@ int main(int argc, char **argv) {
     }
     if (!srv.opts->offline_file) {
         sniffer = sniffer_packet_online(&srv.opts->device, srv.opts->buffer_size, err_buf);
+        if (pcap_set_tstamp_type(sniffer, PCAP_TSTAMP_ADAPTER) < 0) {
+            alog(WARN, "Failed to set the sniffer timestamp type");
+        }
     } else {
         sniffer = sniffer_packet_offline(srv.opts->offline_file, err_buf);
     }
