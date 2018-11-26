@@ -202,10 +202,13 @@ int main(int argc, char **argv) {
         alog(FATAL, "You need to be root to capture the packets online.");
     }
     if (array_used(srv.opts->ports) <= 0) {
-        alog(FATAL, "Please use -p [port] to specify the server port");
+        alog(FATAL, "Please use -p [port1,port2,...] to specify the server ports");
     }
     if (server_init(&srv) == -1) {
         alog(FATAL, "Failed to init server");
+    }
+    if (srv.n_server == 0) {
+        alog(FATAL, "Please use -s [server1,server2,...] to specify the server ips");
     }
     if (srv.opts->script) {
         srv.vm = vm_open_with_script(srv.opts->script, err_buf);
