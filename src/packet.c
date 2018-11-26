@@ -251,6 +251,7 @@ static void process_tcp_packet(server *srv, user_packet *packet) {
     if (srv->opts->mode == P_RAW) {
         push_packet_to_user(srv, packet);
     } else {
+        // the memcached/http request can be treat as redis inline
         record_simple_latency(srv, packet);
     }
 }

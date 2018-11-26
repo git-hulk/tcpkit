@@ -89,6 +89,8 @@ static int parse_protocol(const char *protocol) {
        return P_REDIS;
    } else if (!strncasecmp(protocol, "memcached", strlen(protocol))) {
        return P_MEMCACHED;
+   } else if (!strncasecmp(protocol, "http", strlen(protocol))) {
+       return P_HTTP;
    }
    return P_RAW;
 }

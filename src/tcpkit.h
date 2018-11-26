@@ -59,5 +59,6 @@ typedef enum {
    P_RAW = 0,
    P_REDIS,
    P_MEMCACHED,
+   P_HTTP,
 }PROTOCOL_TYPE;
 #endif //TCPKIT_TCPIKT_H
