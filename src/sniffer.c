@@ -14,11 +14,13 @@
  *
  **/
 
+#include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pcap/pcap.h>
 
+#include "logger.h"
 #include "sniffer.h"
 
 pcap_t *sniffer_packet_offline(const char *file, char *err_buf) {
@@ -31,6 +33,44 @@ pcap_t *sniffer_packet_offline(const char *file, char *err_buf) {
     return pcap_fopen_offline(fp, err_buf);
 }
 
+pcap_t *sniffer_create(const char *device, int snaplen, int promisc, int to_ms, char *errbuf) {
+    pcap_t *p;
+    int status;
+
+    p = pcap_create(device, errbuf);
+    if (p == NULL)
+        return (NULL);
+    status = pcap_set_snaplen(p, snaplen);
+    if (status < 0)
+        goto fail;
+    status = pcap_set_promisc(p, promisc);
+    if (status < 0)
+        goto fail;
+    status = pcap_set_timeout(p, to_ms);
+    if (status < 0)
+        goto fail;
+    if ((status = pcap_set_tstamp_type(p, PCAP_TSTAMP_ADAPTER)) < 0) {
+        alog(WARN, "Failed to set timestamp type, err:%s", pcap_statustostr(status));
+    }
+    status = pcap_activate(p);
+    if (status < 0)
+        goto fail;
+    return (p);
+fail:
+    if (status == PCAP_ERROR)
+        snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s", device, pcap_statustostr(status));
+    else if (status == PCAP_ERROR_NO_SUCH_DEVICE ||
+        status == PCAP_ERROR_PERM_DENIED ||
+        status == PCAP_ERROR_PROMISC_PERM_DENIED)
+        snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s", device,
+            pcap_statustostr(status));
+    else
+        snprintf(errbuf, PCAP_ERRBUF_SIZE, "%s: %s", device,
+            pcap_statustostr(status));
+    pcap_close(p);
+    return (NULL);
+}
+
 pcap_t *sniffer_packet_online(char **device, int buffer_size, char *err_buf) {
     pcap_t *pcap;
     bpf_u_int32 net = 0, mask = 0;
@@ -40,9 +80,11 @@ pcap_t *sniffer_packet_online(char **device, int buffer_size, char *err_buf) {
     if (pcap_lookupnet(*device, &net, &mask, err_buf) == -1) {
         return NULL;
     }
-    pcap = pcap_open_live(*device, capture_length, 0, timeout, err_buf);
+    pcap = sniffer_create(*device, capture_length, 0, timeout, err_buf);
+    if (pcap) {
+        pcap_set_buffer_size(pcap, buffer_size);
+    }
     if(pcap || strcasecmp(*device, "any") != 0) {
-        if(pcap) pcap_set_buffer_size(pcap, buffer_size);
         return pcap;
     }
 
@@ -50,7 +92,7 @@ pcap_t *sniffer_packet_online(char **device, int buffer_size, char *err_buf) {
     if (new_device) {
         if (*device) free(*device);
         *device = strdup(new_device);
-        pcap = pcap_open_live(*device, capture_length, 0, timeout, err_buf);
+        pcap = sniffer_create(*device, capture_length, 0, timeout, err_buf);
     }
     if (pcap) {
         pcap_set_buffer_size(pcap, buffer_size);
