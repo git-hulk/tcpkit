@@ -20,7 +20,7 @@
 #include <string.h>
 
 #include "vm.h"
-#include "tcpikt.h"
+#include "tcpkit.h"
 
 lua_State *vm_open_with_script(const char *file, char *err_buf) {
     lua_State *vm;

@@ -23,7 +23,7 @@
 #include <pcap/sll.h>
 
 #include "packet.h"
-#include "tcpikt.h"
+#include "tcpkit.h"
 #include "array.h"
 #include "redis.h"
 #include "logger.h"

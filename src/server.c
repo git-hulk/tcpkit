@@ -29,7 +29,7 @@
 #include <arpa/inet.h>
 
 #include "server.h"
-#include "tcpikt.h"
+#include "tcpkit.h"
 #include "sniffer.h"
 #include "array.h"
 #include "stats.h"

@@ -29,7 +29,7 @@
 #include "util.h"
 #include "packet.h"
 #include "array.h"
-#include "tcpikt.h"
+#include "tcpkit.h"
 #include "sniffer.h"
 #include "server.h"
 #include "logger.h"

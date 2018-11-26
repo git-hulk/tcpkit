@@ -16,7 +16,7 @@
 
 #ifndef TCPKIT_SERVER_H
 #define TCPKIT_SERVER_H
-#include "tcpikt.h"
+#include "tcpkit.h"
 
 int server_init(server *srv);
 void server_deinit(server *srv);
