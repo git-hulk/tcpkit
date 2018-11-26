@@ -55,7 +55,7 @@ static void usage() {
     fprintf(stderr, "\t-d daemonize, run process in background\n");
     fprintf(stderr, "\t-r set offline file captured by tcpdump or tcpkit\n");
     fprintf(stderr, "\t-t request latency threshold(unit in millisecond), default is 50ms\n");
-    fprintf(stderr, "\t-m protocol mode, raw,redis,memcached\n");
+    fprintf(stderr, "\t-m protocol mode, raw,redis,memcached,http\n");
     fprintf(stderr, "\t-w dump packets to 'savefile'\n");
     fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
     fprintf(stderr, "\t-B operating system capture buffer size, in units of KiB (1024 bytes)\n");

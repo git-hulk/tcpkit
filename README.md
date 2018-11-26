@@ -13,7 +13,7 @@ TCPKIT is a tool to capture tcp packets and analyze the packets with lua.
 	-d daemonize, run process in background
 	-r set offline file captured by tcpdump or tcpkit
 	-t request latency threshold, unit is millisecond
-	-m protocol mode, raw,redis,memcached,dns
+	-m protocol mode, raw,redis,memcached,http
 	-w dump packets to 'savefile'
 	-S lua script path, default is ../scripts/example.lua
 	-B operating system capture buffer size, in units of KiB (1024 bytes)
@@ -33,7 +33,7 @@ $ sudo make && make install
 
 ## Monitor latency
 
-Supports Redis/Memcached/DNS protocol now, we take Redis as example here: 
+Supports Redis/Memcached/Http protocol now, we take Redis as example here: 
 
 ```
 $ sudo tcpkit -i em1 -s 192.168.1.2 -p 6379,6380,6381 -t 10 -m redis
