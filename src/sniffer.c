@@ -74,7 +74,7 @@ fail:
 pcap_t *sniffer_packet_online(char **device, int buffer_size, char *err_buf) {
     pcap_t *pcap;
     bpf_u_int32 net = 0, mask = 0;
-    const int timeout = 1, capture_length = 1024;
+    const int timeout = 1, capture_length = 256;
     char *new_device;
 
     if (pcap_lookupnet(*device, &net, &mask, err_buf) == -1) {
