@@ -144,6 +144,7 @@ void server_print_stats(server *srv) {
 char *server_stats_to_json(server *svr) {
     int i, j, size, n = 0;
     char *buf, *type;
+    struct pcap_stat pcap_stat;
 
     switch(svr->opts->mode) {
         case P_REDIS: type = "redis"; break;
@@ -151,18 +152,21 @@ char *server_stats_to_json(server *svr) {
         default: type = "raw"; break;
     }
 
+    pcap_stats(svr->sniffer, &pcap_stat);
     stats *st = svr->st;
     // latencies
     size = (N_BUCKET* 20 + 2 * 20 + 128) * st->n_latency+256;
     buf = malloc(size);
     n += snprintf(buf, size,
                   "{\"type\":\"%s\","
+                  "\"drops\":%u,"
                   "\"in_packets\":%" PRId64 ","
                   "\"out_packets\":%" PRId64 ","
                   "\"in_bytes\":%" PRId64 ","
                   "\"out_bytes\":%" PRId64 ","
                   " \"ports\":",
                   type,
+                  pcap_stat.ps_drop,
                   st->req_packets,
                   st->rsp_packets,
                   st->req_bytes,
