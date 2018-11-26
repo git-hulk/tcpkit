@@ -131,26 +131,42 @@ static options* parse_options(int argc, char **argv) {
     return opts;
 }
 
-static char *gen_filter_from_options(options *opts) {
+static char *gen_filter(server *srv) {
     int i, n = 0, size = 0;
     char *buf;
+    options *opts;
 
-    if (opts->servers) size = array_used(opts->servers) * 32;
-    if (opts->ports) size += array_used(opts->ports) * 32;
+    opts = srv->opts;
+    size = 2*32*array_used(opts->ports)+2*64*srv->n_server;
     buf = malloc(size);
+
     buf[n++] = '(';
-    for (i = 0; i < array_used(opts->servers); i++) {
-        if (i != array_used(opts->servers)-1) {
-            n += snprintf(buf + n, size - n, "host %s or ", *(char **) array_pos(opts->servers, i));
-        } else {
-            n += snprintf(buf + n, size - n, "host %s) and (", *(char **) array_pos(opts->servers, i));
-        }
+    buf[n++] = '(';
+    for (i = 0; i < srv->n_server; i++) {
+        n += snprintf(buf+n, size-n, "src host %s or ", inet_ntoa(srv->servers[i]));
     }
+    n -= 4;
+    buf[n++] = ')';
+    n += snprintf(buf+n, size-n, " and (");
     for (i = 0; i < array_used(opts->ports); i++) {
-        n += snprintf(buf+n, size, "port %d or ", *(int*)array_pos(opts->ports, i));
+        n += snprintf(buf+n, size-n, "src port %d or ", *(int*)array_pos(opts->ports, i));
     }
-    buf[n-4] = ')';
-    buf[n-3] = '\0'; // trim the last ' and '
+    n -= 4;
+    buf[n++] = ')';
+    n += snprintf(buf+n, size-n, ") or ((");
+    for (i = 0; i < srv->n_server; i++) {
+        n += snprintf(buf+n, size-n, "dst host %s or ", inet_ntoa(srv->servers[i]));
+    }
+    n -= 4;
+    buf[n++] = ')';
+    n += snprintf(buf+n, size-n, " and (");
+    for (i = 0; i < array_used(opts->ports); i++) {
+        n += snprintf(buf+n, size-n, "dst port %d or ", *(int*)array_pos(opts->ports, i));
+    }
+    n -= 4;
+    buf[n++] = ')';
+    buf[n++] = ')';
+    buf[n++] = '\0';
     return buf;
 }
 
@@ -202,7 +218,7 @@ int main(int argc, char **argv) {
     }
     if (!sniffer) alog(FATAL, "Failed to setup the sniffer, err: %s", err_buf);
     srv.sniffer = sniffer;
-    srv.filter = gen_filter_from_options(srv.opts);
+    srv.filter = gen_filter(&srv);
     alog(INFO, "Start capturing on device %s, with filter[%s]", srv.opts->device, srv.filter);
     if (srv.opts->logfile) {
         FILE *fp = fopen(srv.opts->logfile, "a");

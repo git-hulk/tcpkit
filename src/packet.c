@@ -137,21 +137,25 @@ static void push_packet_to_vm(lua_State *vm, user_packet *packet) {
 }
 
 static void push_packet_to_user(server *srv, user_packet *packet) {
-    char t_buf[64], *type = "REQ";
+    char t_buf[64], *type = "REQ", *sip, *dip, sip_buf[64], dip_buf[64];
     if (srv->vm) {
         push_packet_to_vm(srv->vm, packet);
         return;
     }
     if (packet->size == 0) return;
 
+    sip = inet_ntoa(packet->sip);
+    snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
+    dip = inet_ntoa(packet->dip);
+    snprintf(dip_buf, sizeof(dip_buf), dip, strlen(dip));
     strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&packet->tv->tv_sec));
     if (!packet->request) type = "RSP";
     if (packet->tcp) {
         rlog("%s %s:%d=>%s:%d %s %u %u %d %u %.*s",
              t_buf,
-             inet_ntoa(packet->sip),
+             sip_buf,
              packet->sport,
-             inet_ntoa(packet->dip),
+             dip_buf,
              packet->dport,
              type,
              packet->seq,
@@ -164,9 +168,9 @@ static void push_packet_to_user(server *srv, user_packet *packet) {
     } else {
         rlog("%s %s:%d=>%s:%d %s %u %.*s",
              t_buf,
-             inet_ntoa(packet->sip),
+             sip_buf,
              packet->sport,
-             inet_ntoa(packet->dip),
+             dip_buf,
              packet->dport,
              type,
              packet->size,
@@ -203,20 +207,15 @@ static int is_noreply(int mode, char *req) {
 
 static void record_simple_latency(server *srv, user_packet *packet) {
     int latency_us;
-    size_t size;
     char key[64], t_buf[64];
-    char *sip, *dip, sip_buf[16], dip_buf[16];
+    char *sip, *dip, sip_buf[64], dip_buf[64];
 
     if (packet->size == 0) return; // ignore the syn/fin packet
 
     sip = inet_ntoa(packet->sip);
-    size = strlen(sip);
-    memcpy(sip_buf, sip, size);
-    sip_buf[size] = '\0';
+    snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
     dip = inet_ntoa(packet->dip);
-    size = strlen(dip);
-    memcpy(dip_buf, dip, size);
-    dip_buf[size] = '\0';
+    snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
 
     if (packet->request) {
         snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
