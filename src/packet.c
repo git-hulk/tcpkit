@@ -210,12 +210,19 @@ static void record_simple_latency(server *srv, user_packet *packet) {
     char key[64], t_buf[64];
     char *sip, *dip, sip_buf[64], dip_buf[64];
 
-    if (packet->size == 0) return; // ignore the syn/fin packet
-
     sip = inet_ntoa(packet->sip);
     snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
     dip = inet_ntoa(packet->dip);
     snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
+
+    if (packet->size == 0) {
+        // remove the request while the port was reused
+        if (packet->request && (packet->flags & 0x02)) {
+            snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
+            hashtable_del(srv->req_ht, key);
+        }
+        return;
+    }
 
     if (packet->request) {
         snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
