@@ -216,9 +216,11 @@ static void record_simple_latency(server *srv, user_packet *packet) {
     snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
 
     if (packet->size == 0) {
-        // remove the request while the port was reused
-        if (packet->request && (packet->flags & 0x02)) {
+        if (packet->request && (packet->flags & 0x02)) { // clear the request if new syn was received
             snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
+            hashtable_del(srv->req_ht, key);
+        } else if (!packet->request && (packet->flags&0x05)) { // clear the request if the server closed the connection(rst(0x04)|fin(0x01)) 
+            snprintf(key, 64, "%s:%d => %s:%d", dip_buf, packet->dport, sip_buf, packet->sport);
             hashtable_del(srv->req_ht, key);
         }
         return;
