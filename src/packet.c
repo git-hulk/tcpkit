@@ -210,22 +210,30 @@ static void record_simple_latency(server *srv, user_packet *packet) {
     char key[64], t_buf[64];
     char *sip, *dip, sip_buf[64], dip_buf[64];
 
-    sip = inet_ntoa(packet->sip);
-    snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
-    dip = inet_ntoa(packet->dip);
-    snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
 
     if (packet->size == 0) {
         if (packet->request && (packet->flags & 0x02)) { // clear the request if new syn was received
+            sip = inet_ntoa(packet->sip);
+            snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
+            dip = inet_ntoa(packet->dip);
+            snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
             snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
             hashtable_del(srv->req_ht, key);
         } else if (!packet->request && (packet->flags&0x05)) { // clear the request if the server closed the connection(rst(0x04)|fin(0x01)) 
+            sip = inet_ntoa(packet->sip);
+            snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
+            dip = inet_ntoa(packet->dip);
+            snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
             snprintf(key, 64, "%s:%d => %s:%d", dip_buf, packet->dport, sip_buf, packet->sport);
             hashtable_del(srv->req_ht, key);
         }
         return;
     }
 
+    sip = inet_ntoa(packet->sip);
+    snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
+    dip = inet_ntoa(packet->dip);
+    snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
     if (packet->request) {
         snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
         request *req = parse_redis_request(packet->payload, packet->size);
