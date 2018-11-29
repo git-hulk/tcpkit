@@ -26,7 +26,7 @@ int64_t latency_buckets[N_BUCKET] = {
 
 const char *latency_buckets_name[N_BUCKET] = {
    "0.1ms", "0.2ms", "0.5ms", "1ms", "5ms", "10ms", "20ms", "50ms", "100ms", "200ms","500ms", "1s", "2s", "3s", "5s",
-   "10s", "20s"
+   "10s", "20s", "+inf"
 };
 
 stats *stats_create(int n) {
