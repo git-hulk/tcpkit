@@ -32,6 +32,6 @@ typedef struct hashtable {
 hashtable *hashtable_create(int nbucket);
 void hashtable_destroy(hashtable *ht);
 void *hashtable_get(hashtable *ht, char *key);
-int hashtable_add(hashtable *ht, char *key, void *value);
+void *hashtable_add(hashtable *ht, char *key, void *value);
 int hashtable_del(hashtable *ht, char *key);
 #endif //TCPKIT_HASHTABLE_H

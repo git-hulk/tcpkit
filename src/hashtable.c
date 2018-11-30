@@ -91,7 +91,7 @@ void hashtable_destroy(hashtable *ht) {
    free(ht);
 }
 
-int hashtable_add(hashtable *ht, char *key, void *value) {
+void *hashtable_add(hashtable *ht, char *key, void *value) {
     int bucket, key_size, current_key_size;
     entry *current;
 
@@ -102,7 +102,7 @@ int hashtable_add(hashtable *ht, char *key, void *value) {
         current_key_size = strlen(current->key);
         if (key_size == current_key_size
             && !strncmp(key, current->key, key_size)){
-            return 0;
+            return current->value;
         }
         current = current->next;
     }
@@ -111,7 +111,7 @@ int hashtable_add(hashtable *ht, char *key, void *value) {
     e->key = strdup(key);
     e->next = ht->buckets[bucket];
     ht->buckets[bucket] = e;
-    return 1;
+    return NULL;
 }
 
 void *hashtable_get(hashtable *ht, char *key) {

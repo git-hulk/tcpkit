@@ -224,7 +224,8 @@ int main(int argc, char **argv) {
     if (!sniffer) alog(FATAL, "Failed to setup the sniffer, err: %s", err_buf);
     srv.sniffer = sniffer;
     srv.filter = gen_filter(&srv);
-    alog(INFO, "Start capturing on device %s, with filter[%s]", srv.opts->device, srv.filter);
+    alog(INFO, "Running in [%s] side with device %s with filter[%s]",
+            srv.is_server_mode?"server":"client", srv.opts->device, srv.filter);
     if (srv.opts->logfile) {
         FILE *fp = fopen(srv.opts->logfile, "a");
         if (!fp) alog(FATAL, "Failed to open log file, err:%s", strerror(errno));

@@ -36,6 +36,16 @@
 #include "util.h"
 #include "logger.h"
 
+static int server_runing_in_client(struct array *local_addrs, struct in_addr *addr) {
+    int i;
+    struct in_addr *local_addr;
+    for (i = 0; i < array_used(local_addrs); i++) {
+        local_addr = (struct in_addr*)array_pos(local_addrs, i);
+        if (local_addr->s_addr == addr->s_addr) return 0;
+    }
+    return 1;
+}
+
 int server_init(server *srv) {
     int i, n_server;
     char *server_str;
@@ -46,20 +56,23 @@ int server_init(server *srv) {
     if (!srv->req_ht) return -1;
     srv->st = stats_create(array_used(srv->opts->ports));
     if (!srv->st) return -1;
+    srv->is_server_mode = 1;
 
     srv->n_server = 0;
     srv->servers = NULL;
     n_server = array_used(srv->opts->servers);
+   local_addresses = get_addresses_from_device();
     if (n_server > 0) {
         srv->n_server = n_server;
         srv->servers = malloc(n_server * sizeof(struct in_addr));
         for (i = 0; i < n_server; i++) {
             server_str = *(char **)array_pos(srv->opts->servers, i);
             inet_pton(AF_INET, server_str, &srv->servers[i]);
+            if (server_runing_in_client(local_addresses, &srv->servers[i])) {
+                srv->is_server_mode = 0;
+            }
         }
     } else {
-        // fetch server ip from nic
-        local_addresses = get_addresses_from_device();
         if (local_addresses) {
             srv->n_server = array_used(local_addresses);
             srv->servers = malloc(srv->n_server * sizeof(struct in_addr));

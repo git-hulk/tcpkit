@@ -53,6 +53,7 @@ typedef struct {
     int stop;
     struct in_addr *servers;
     int n_server;
+    int is_server_mode;
 } server;
 
 typedef enum {

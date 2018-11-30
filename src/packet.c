@@ -209,6 +209,7 @@ static void record_simple_latency(server *srv, user_packet *packet) {
     int latency_us;
     char key[64], t_buf[64];
     char *sip, *dip, sip_buf[64], dip_buf[64];
+    request *old_req;
 
 
     if (packet->size == 0) {
@@ -242,9 +243,10 @@ static void record_simple_latency(server *srv, user_packet *packet) {
                 free(req);
                 return; // don't store the noreply request
             }
-            req->tv = *packet->tv;
-            if (!hashtable_add(srv->req_ht, key, req)) {
-               free(req);
+            req->tv = *(packet->tv);
+            if ((old_req = hashtable_add(srv->req_ht, key, req)) != NULL) {
+                if(srv->is_server_mode) old_req->tv = *(packet->tv);
+                free(req);
             }
         }
     } else {
