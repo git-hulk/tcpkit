@@ -48,12 +48,10 @@ static int port_in_target(server *srv, int dport) {
     return -1;
 }
 
-static user_packet* gen_tcp_packet(const struct timeval *tv, const struct ip *ip_packet) {
+void gen_tcp_packet(const struct timeval *tv, const struct ip *ip_packet, user_packet *packet) {
     struct tcphdr *tcphdr;
-    user_packet* packet;
     unsigned int size, iphdr_size, tcphdr_size;
 
-    packet = malloc(sizeof(*packet));
     packet->tv = tv;
     iphdr_size = IP_HL(ip_packet)*4;
     size = htons(ip_packet->ip_len);
@@ -79,13 +77,9 @@ static user_packet* gen_tcp_packet(const struct timeval *tv, const struct ip *ip
     packet->payload = (char *)tcphdr + tcphdr_size;
     packet->size = size - iphdr_size - tcphdr_size;
     packet->tcp = 1;
-
-    // update the st
-    return packet;
 }
 
-static user_packet* gen_udp_packet(const struct timeval *tv, const struct ip *ip_packet) {
-    user_packet *packet;
+static void gen_udp_packet(const struct timeval *tv, const struct ip *ip_packet, user_packet *packet) {
     struct udphdr *udphdr;
     int iphdr_size;
 
@@ -107,7 +101,6 @@ static user_packet* gen_udp_packet(const struct timeval *tv, const struct ip *ip
 #endif
     packet->payload = (char *)udphdr + sizeof(struct udphdr);
     packet->tcp = 0;
-    return packet;
 }
 
 static void push_packet_to_vm(lua_State *vm, user_packet *packet) {
@@ -295,7 +288,7 @@ void extract_packet_handler(unsigned char *user,
                        const struct pcap_pkthdr *header,
                        const unsigned char *packet) {
     const struct ip* ip_packet;
-    user_packet *upacket;
+    user_packet upacket;
 
     server *srv = (server*) user;
     switch (pcap_datalink((pcap_t*)srv->sniffer)) {
@@ -315,18 +308,16 @@ void extract_packet_handler(unsigned char *user,
     }
     switch (ip_packet->ip_p) {
         case IPPROTO_TCP:
-            upacket = gen_tcp_packet(&header->ts, ip_packet);
-            upacket->request = is_request(srv, upacket);
-            process_tcp_packet(srv, upacket);
-            stats_update_bytes(srv->st, upacket->request, upacket->size);
-            free(upacket);
+            gen_tcp_packet(&header->ts, ip_packet, &upacket);
+            upacket.request = is_request(srv, &upacket);
+            process_tcp_packet(srv, &upacket);
+            stats_update_bytes(srv->st, upacket.request, upacket.size);
             break;
         case IPPROTO_UDP:
-            upacket = gen_udp_packet(&header->ts, ip_packet);
-            upacket->request = is_request(srv, upacket);
-            process_udp_packet(srv, upacket);
-            stats_update_bytes(srv->st, upacket->request, upacket->size);
-            free(upacket);
+            gen_udp_packet(&header->ts, ip_packet, &upacket);
+            upacket.request = is_request(srv, &upacket);
+            process_udp_packet(srv, &upacket);
+            stats_update_bytes(srv->st, upacket.request, upacket.size);
             break;
         default:
             break;
