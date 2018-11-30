@@ -207,29 +207,17 @@ static void record_simple_latency(server *srv, user_packet *packet) {
 
     if (packet->size == 0) {
         if (packet->request && (packet->flags & 0x02)) { // clear the request if new syn was received
-            sip = inet_ntoa(packet->sip);
-            snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
-            dip = inet_ntoa(packet->dip);
-            snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
-            snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
+            snprintf(key, 64, "%u:%d:%u:%d", packet->sip.s_addr, packet->sport, packet->dip.s_addr, packet->dport);
             hashtable_del(srv->req_ht, key);
         } else if (!packet->request && (packet->flags&0x05)) { // clear the request if the server closed the connection(rst(0x04)|fin(0x01)) 
-            sip = inet_ntoa(packet->sip);
-            snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
-            dip = inet_ntoa(packet->dip);
-            snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
-            snprintf(key, 64, "%s:%d => %s:%d", dip_buf, packet->dport, sip_buf, packet->sport);
+            snprintf(key, 64, "%u:%d:%u:%d", packet->dip.s_addr, packet->dport, packet->sip.s_addr, packet->sport);
             hashtable_del(srv->req_ht, key);
         }
         return;
     }
 
-    sip = inet_ntoa(packet->sip);
-    snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
-    dip = inet_ntoa(packet->dip);
-    snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
     if (packet->request) {
-        snprintf(key, 64, "%s:%d => %s:%d", sip_buf, packet->sport, dip_buf, packet->dport);
+        snprintf(key, 64, "%u:%d:%u:%d", packet->sip.s_addr, packet->sport, packet->dip.s_addr, packet->dport);
         request *req = parse_redis_request(packet->payload, packet->size);
         if (req) {
             if (is_noreply(srv->opts->mode, req->buf)) {
@@ -243,7 +231,7 @@ static void record_simple_latency(server *srv, user_packet *packet) {
             }
         }
     } else {
-        snprintf(key, 64, "%s:%d => %s:%d", dip_buf, packet->dport, sip_buf, packet->sport);
+        snprintf(key, 64, "%u:%d:%u:%d", packet->dip.s_addr, packet->dport, packet->sip.s_addr, packet->sport);
         request *req = hashtable_get(srv->req_ht, key);
         if (req) {
             latency_us = (packet->tv->tv_sec - req->tv.tv_sec) * 1000000 + (packet->tv->tv_usec - req->tv.tv_usec);
@@ -252,7 +240,13 @@ static void record_simple_latency(server *srv, user_packet *packet) {
             if (latency_us >= srv->opts->threshold_ms*1000) {
                 if (srv->opts->threshold_ms>0) stats_incr_slow_count(srv->st, ind);
                 strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&packet->tv->tv_sec));
-                rlog("%s.%06d %.44s | %.3f ms | %s", t_buf, packet->tv->tv_usec, key, latency_us/1000.0, req->buf);
+
+                sip = inet_ntoa(packet->sip);
+                snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
+                dip = inet_ntoa(packet->dip);
+                snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
+                rlog("%s.%06d %s:%d => %s:%d | %.3f ms | %s", t_buf, packet->tv->tv_usec,
+                     dip_buf, packet->dport, sip_buf, packet->sport, latency_us/1000.0, req->buf);
             }
             hashtable_del(srv->req_ht, key);
         }
