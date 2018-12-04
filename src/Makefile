@@ -30,7 +30,7 @@ dep.mk:
 	$(TCPKIT_CC) -MM *.c > dep.mk
 
 deps: nop
-	@cd ../deps/libpcap/  && ./configure --enable-dbus=no && make
+	@cd ../deps/libpcap/  && ./configure --enable-dbus=no --without-libnl && make
 	@cd ../deps/lua/src && make a
 
 clean:
