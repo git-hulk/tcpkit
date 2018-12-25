@@ -232,7 +232,10 @@ int main(int argc, char **argv) {
         set_log_fp(fp);
     }
     if (srv.opts->daemonize) daemonize();
-    server_create_stats_thread(&srv);
+    // don't setup stats port while offline or raw mode
+    if (!srv.opts->offline_file && srv.opts->mode != P_RAW) {
+        server_create_stats_thread(&srv);
+    }
     if (sniffer_loop(sniffer, srv.filter, extract_packet_handler, &srv) == -1) {
         alog(FATAL, "Failed to start the sniffer, err: %s", pcap_geterr(sniffer));
     }
