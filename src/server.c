@@ -57,7 +57,7 @@ int server_init(server *srv) {
     srv->st = stats_create(array_used(srv->opts->ports));
     if (!srv->st) return -1;
     srv->is_server_mode = 1;
-
+    srv->stats_tid = 0;
     srv->n_server = 0;
     srv->servers = NULL;
     n_server = array_used(srv->opts->servers);
@@ -89,7 +89,7 @@ int server_init(server *srv) {
 void server_deinit(server *srv) {
     srv->stop = 1;
     sniffer_terminate(srv->sniffer);
-    pthread_join(srv->stats_tid, NULL);
+    if (srv->stats_tid > 0) pthread_join(srv->stats_tid, NULL);
     if (srv->sniffer) pcap_close(srv->sniffer);
     if (srv->vm) lua_close(srv->vm);
     // wait for stats thread
