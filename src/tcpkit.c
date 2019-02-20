@@ -212,10 +212,6 @@ int main(int argc, char **argv) {
     if (srv.n_server == 0) {
         alog(FATAL, "Please use -s [server1,server2,...] to specify the server ips");
     }
-    if (srv.opts->script) {
-        srv.vm = vm_open_with_script(srv.opts->script, err_buf);
-        if (!srv.vm) alog(FATAL, "Failed to open vm, err: %s", err_buf);
-    }
     if (!srv.opts->offline_file) {
         sniffer = sniffer_packet_online(&srv.opts->device, srv.opts->buffer_size, err_buf);
     } else {
@@ -230,6 +226,10 @@ int main(int argc, char **argv) {
         FILE *fp = fopen(srv.opts->logfile, "a");
         if (!fp) alog(FATAL, "Failed to open log file, err:%s", strerror(errno));
         set_log_fp(fp);
+    }
+    if (srv.opts->script) {
+        srv.vm = vm_open_with_script(srv.opts->script, err_buf);
+        if (!srv.vm) alog(FATAL, "Failed to open vm, err: %s", err_buf);
     }
     if (srv.opts->daemonize) daemonize();
     // don't setup stats port while offline or raw mode
