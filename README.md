@@ -59,6 +59,12 @@ The tcp packet would be passed to `lua VM`, and we can analyze the packet with l
 $ sudo tcpkit -i em1 -p 6379 -m raw -S ../scripts/example.lua 
 ```
 
+## Scripts
+
+1. [exmaple.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/example.lua) - example for user defined script
+2. [dns.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/dns.lua) - print the dns latency
+3. [tcp-connnect.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/tcp-connect.lua) - print connection with syn packet retransmit
+
 ## Fetch Stats Online
 
 Tcpkit also exports latency stats to the user by tcp port (default is 33333), use the `-P` option to change it.
