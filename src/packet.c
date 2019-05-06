@@ -86,7 +86,6 @@ static void gen_udp_packet(const struct timeval *tv, const struct ip *ip_packet,
     iphdr_size = IP_HL(ip_packet)*4;
     udphdr = (struct udphdr *)((unsigned char *)ip_packet + iphdr_size);
 
-    packet = malloc(sizeof(*packet));
     packet->tv = tv;
     packet->sip = ip_packet->ip_src;
     packet->dip = ip_packet->ip_dst;
