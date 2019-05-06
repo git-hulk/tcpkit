@@ -29,6 +29,10 @@ function process(packet)
             -- only print the connection with retransmit syn packet
             if first_syn_packet and first_syn_packet.count > 0 then
             local time_str = os.date('%Y-%m-%d %H:%M:%S', packet.tv_sec).."."..packet.tv_usec
+            if packet.tv_usec < first_syn_packet.tv_usec then
+                packet.tv_sec = packet.tv_sec - 1
+                packet.tv_usec = packet.tv_usec + 1000000
+            end
             print(string.format("%26s %47s %6d %12d.%06d",
                                 time_str,
                                 key,
