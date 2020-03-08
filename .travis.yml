@@ -1,0 +1,33 @@
+dist: trusty
+language: c++
+os:
+  - linux
+sudo: yes
+compiler:
+  - gcc
+
+stages:
+    - analysis
+    - build
+    - test
+
+jobs:
+  include:
+    - stage: analysis
+      name: Static check the source code and lint 
+      install:
+        - sudo apt-get install -y cppcheck
+      script:
+          make lint
+
+    - stage: build 
+      name: build the tcpkit 
+      install:
+        - sudo apt-get install flex bison
+      script:
+          make
+
+    - stage: build 
+      name: unittest 
+      script:
+          make test

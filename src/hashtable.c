@@ -157,7 +157,7 @@ int hashtable_del(hashtable *ht, char *key) {
 void **hashtable_values(hashtable *ht, int *cnt) {
     int i, cap = 0;
     entry *e;
-    void **values = NULL;
+    void **values = NULL, **new_values;
     
     *cnt = 0;
     for (i = 0; i < ht->nbucket; i++) {
@@ -165,10 +165,16 @@ void **hashtable_values(hashtable *ht, int *cnt) {
         while(e) {
             if (!values) {
                 values = malloc(sizeof(void *));
+                if (!values) return NULL;
                 cap = 1;
             } else if (*cnt == cap) {
                 cap *= 2;
-                values = realloc(values, sizeof(void *) * cap);
+                new_values = realloc(values, sizeof(void *) * cap);
+                if (!new_values) {
+                    return values;
+                } else {
+                    values = new_values;
+                }
             }
             values[*cnt] = e->value;
             *cnt += 1;

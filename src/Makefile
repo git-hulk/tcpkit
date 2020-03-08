@@ -34,10 +34,15 @@ deps: nop
 	@cd ../deps/libpcap/  && ./configure --enable-dbus=no --without-libnl && make
 	@cd ../deps/lua/src && make a
 
+lint:
+	sh cppcheck.sh
+test:
+
 clean:
 	- rm -rf $(PROG) dep.mk *.o 
 	@cd ../deps/libpcap/ && make clean
 	@cd ../deps/lua/src/ && make clean
+
 nop:
 
 install:

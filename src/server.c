@@ -47,7 +47,10 @@ struct server *server_create(struct options *opts, char *err) {
     srv->stats_tid = 0;
     srv->stopped = 0;
     sniffer = sniffer_create(opts, err);
-    if (!sniffer) return NULL;
+    if (!sniffer) {
+        free(srv);
+        return NULL;
+    }
     srv->sniffer = sniffer;
 
     if (!opts->offline_file && opts->save_file) {

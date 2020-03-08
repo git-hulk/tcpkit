@@ -134,13 +134,17 @@ struct options *parse_options(int argc, char **argv) {
             if (!opts->filter) {
                 opts->filter = strdup(argv[i]);
             } else {
+                char *tmp;
                 int new_size, old_size = strlen(opts->filter);
                 // add 2 for white space and terminal char 
                 new_size = old_size+strlen(argv[i])+2;
-                opts->filter = realloc(opts->filter, new_size);
-                opts->filter[old_size++] = ' ';
-                memcpy(opts->filter+old_size, argv[i], strlen(argv[i]));
-                opts->filter[new_size-1] = '\0'; 
+                tmp = realloc(opts->filter, new_size);
+                if (tmp) {
+                    opts->filter = tmp;
+                    opts->filter[old_size++] = ' ';
+                    memcpy(opts->filter+old_size, argv[i], strlen(argv[i]));
+                    opts->filter[new_size-1] = '\0'; 
+                }
             }
         }
     }
@@ -149,7 +153,8 @@ struct options *parse_options(int argc, char **argv) {
 
 invalid:
     log_message(FATAL, "Invalid option \"%s\" or option argument missing",argv[i]);
-    return 0;
+    free_options(opts);
+    return NULL;
 }
 
 int main(int argc, char **argv) {
