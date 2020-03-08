@@ -17,32 +17,24 @@
 #ifndef TCPKIT_STATS_H
 #define TCPKIT_STATS_H
 
-#include <stdint.h>
+#include <arpa/inet.h>
+#include "cJSON.h"
 
-#define N_BUCKET 18
+#define LATANCY_BUCKETS 18 
 
-typedef struct {
-    int64_t total_reqs;
-    int64_t total_costs;
-    int64_t slow_counts;
-    int64_t buckets[N_BUCKET];
-}latency_stat;
+struct query_stats {
+    uint64_t request_bytes;
+    uint64_t response_bytes;
+    uint64_t requests;
+    uint64_t responses;
+    uint64_t buckets[LATANCY_BUCKETS]; 
 
-typedef struct {
-    int64_t req_bytes;
-    int64_t rsp_bytes;
-    int64_t req_packets;
-    int64_t rsp_packets;
-    latency_stat *latencies;
-    int n_latency;
-}stats;
+    struct in_addr ip;
+    uint16_t port;
+};
 
-extern int64_t latency_buckets[N_BUCKET];
-extern const char *latency_buckets_name[N_BUCKET];
+cJSON *create_stats_object(struct query_stats *stats);
+void stats_incr(struct query_stats *stats, int is_request, int bytes); 
+void stats_observer_latency(struct query_stats *stats, int64_t latency); 
 
-stats *stats_create(int n);
-void stats_destroy(stats *st);
-void stats_update_bytes(stats *st, int req, uint64_t bytes);
-void stats_incr_slow_count(stats *st, int ind);
-void stats_update_latency(stats *st, int ind, int64_t latency_us);
-#endif //TCPKIT_STATS_H
+#endif

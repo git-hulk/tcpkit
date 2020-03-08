@@ -13,306 +13,242 @@
  *   GNU General Public License for more details.
  *
  **/
-
 #include <stdlib.h>
-#include <string.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <net/ethernet.h>
-#include <pcap/sll.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <pcap.h>
 
+#include "log.h"
+#include "lua.h"
 #include "packet.h"
-#include "tcpkit.h"
-#include "array.h"
-#include "redis.h"
-#include "logger.h"
-#include "vm.h"
+#include "stats.h"
+#include "protocol.h"
 
-#define NULL_HDRLEN 4
 #ifdef _IP_VHL
 #define IP_HL(ip) (((ip)->ip_vhl) & 0x0f)
 #else
 #define IP_HL(ip) (((ip)->ip_hl) & 0x0f)
 #endif
 
-static int port_in_target(server *srv, int dport) {
-    int i;
+void process_tcp_packet(struct sniffer *sniffer,
+        const struct timeval tv,
+        const struct ip* ip_packet,
+        struct user_packet *packet) {
 
-    struct array *ports = srv->opts->ports;
-    for (i = 0; i < array_used(ports); i++) {
-        if (dport == *(int*)array_pos(ports, i)) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-void gen_tcp_packet(const struct timeval *tv, const struct ip *ip_packet, user_packet *packet) {
     struct tcphdr *tcphdr;
-    unsigned int size, iphdr_size, tcphdr_size;
+    unsigned int iplen, iphdr_size, tcphdr_size, framehdr_size;
+
+    iphdr_size = IP_HL(ip_packet)*4;
+    iplen = htons(ip_packet->ip_len);
+    framehdr_size = packet->size - iplen;
+    packet->payload_size -= framehdr_size;
 
     packet->tv = tv;
-    iphdr_size = IP_HL(ip_packet)*4;
-    size = htons(ip_packet->ip_len);
-    packet->sip = ip_packet->ip_src;
-    packet->dip = ip_packet->ip_dst;
+    packet->ip_src = ip_packet->ip_src;
+    packet->ip_dst = ip_packet->ip_dst;
     tcphdr = (struct tcphdr *)((unsigned char *)ip_packet + iphdr_size);
-#if defined(__FAVOR_BSD) || defined(__APPLE__)
+    #if defined(__FAVOR_BSD) || defined(__APPLE__)
     packet->seq = htonl(tcphdr->th_seq);
     packet->ack = htonl(tcphdr->th_ack);
     packet->flags = tcphdr->th_flags;
-    packet->sport = ntohs(tcphdr->th_sport);
-    packet->dport = ntohs(tcphdr->th_dport);
+    packet->port_src = ntohs(tcphdr->th_sport);
+    packet->port_dst = ntohs(tcphdr->th_dport);
     tcphdr_size = tcphdr->th_off * 4;
 #else
     packet->seq = htonl(tcphdr->seq);
     packet->ack = htonl(tcphdr->ack_seq);
     packet->flags = tcphdr->fin | (tcphdr->syn<<1) | (tcphdr->rst<<2) | (tcphdr->psh<<3);
     if (tcphdr->ack) packet->flags |= 0x10;
-    packet->sport = ntohs(tcphdr->source);
-    packet->dport = ntohs(tcphdr->dest);
+    packet->port_src = ntohs(tcphdr->source);
+    packet->port_dst = ntohs(tcphdr->dest);
     tcphdr_size = tcphdr->doff * 4;
 #endif
     packet->payload = (char *)tcphdr + tcphdr_size;
-    packet->size = size - iphdr_size - tcphdr_size;
-    packet->tcp = 1;
+    if (iplen < packet->payload_size) packet->payload_size = iplen;
+    if (packet->payload_size > iphdr_size + tcphdr_size) {
+        packet->payload_size -= (iphdr_size + tcphdr_size);
+    } else {
+        packet->payload_size = 0; 
+    }
+    packet->is_tcp = 1;
 }
 
-static void gen_udp_packet(const struct timeval *tv, const struct ip *ip_packet, user_packet *packet) {
-    struct udphdr *udphdr;
-    int iphdr_size;
+void process_udp_packet(struct sniffer *sniffer,
+        const struct timeval tv,
+        const struct ip* ip_packet,
+        struct user_packet *packet) {
 
+    struct udphdr *udphdr;
+    int iphdr_size, framehdr_size, udp_len, payload_size;
+    
     iphdr_size = IP_HL(ip_packet)*4;
     udphdr = (struct udphdr *)((unsigned char *)ip_packet + iphdr_size);
-
     packet->tv = tv;
-    packet->sip = ip_packet->ip_src;
-    packet->dip = ip_packet->ip_dst;
+    packet->ip_src = ip_packet->ip_src;
+    packet->ip_dst = ip_packet->ip_dst;
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
-    packet->sport = ntohs(udphdr->uh_sport);
-    packet->dport = ntohs(udphdr->uh_dport);
-    packet->size= ntohs(udphdr->uh_ulen);
+    packet->port_src = ntohs(udphdr->uh_sport);
+    packet->port_dst = ntohs(udphdr->uh_dport);
+    udp_len = ntohs(udphdr->uh_ulen);
 #else
-    packet->sport = ntohs(udphdr->source);
-    packet->dport = ntohs(udphdr->dest);
-    packet->size = ntohs(udphdr->len);
+    packet->port_src = ntohs(udphdr->source);
+    packet->port_dst = ntohs(udphdr->dest);
+    udp_len = ntohs(udphdr->len);
 #endif
+    framehdr_size = packet->size - iphdr_size - udp_len;
+    payload_size = packet->payload_size - (framehdr_size+iphdr_size);
+    packet->payload_size = udp_len > payload_size ? payload_size : udp_len;
     packet->payload = (char *)udphdr + sizeof(struct udphdr);
-    packet->tcp = 0;
+    packet->is_tcp = 0;
 }
 
-static void push_packet_to_vm(lua_State *vm, user_packet *packet) {
-    lua_getglobal(vm, "process");
-    lua_newtable(vm);
-    vm_push_table_int(vm, "tv_sec", packet->tv->tv_sec);
-    vm_push_table_int(vm, "tv_usec", packet->tv->tv_usec);
-    vm_push_table_string(vm, "sip", inet_ntoa(packet->sip));
-    vm_push_table_int(vm, "sport", packet->sport);
-    vm_push_table_string(vm, "dip", inet_ntoa(packet->dip));
-    vm_push_table_int(vm, "dport", packet->dport);
-    if (packet->tcp) {
-        vm_push_table_int(vm, "seq", packet->seq);
-        vm_push_table_int(vm, "ack", packet->ack);
-        vm_push_table_int(vm, "flags", packet->flags);
-    }
-    vm_push_table_boolean(vm, "request", packet->request);
-    vm_push_table_cstring(vm, "payload", packet->payload, packet->size);
-    vm_push_table_int(vm, "size", packet->size);
-    if (lua_pcall(vm, 1, 1, 0) != 0) {
-       // log error
-        alog(ERROR, "%s\n", lua_tostring(vm, -1));
-    }
-    lua_tonumber(vm, -1);
-    lua_pop(vm, -1);
-    vm_need_gc(vm);
-}
+static int packet_direction(struct sniffer *sniffer, struct user_packet *upacket) {
+    char key[32];
+    struct query_stats *stats;
 
-static void push_packet_to_user(server *srv, user_packet *packet) {
-    char t_buf[64], *type = "REQ", *sip, *dip, sip_buf[64], dip_buf[64];
-    if (srv->vm) {
-        push_packet_to_vm(srv->vm, packet);
-        return;
+    snprintf(key, sizeof(key), "%u:%d", upacket->ip_src.s_addr, upacket->port_src);
+    if ((stats = hashtable_get(sniffer->syn_tab, key)) != NULL) {
+        stats_incr(stats, 0, upacket->size);
+        return 0;
     }
-    if (packet->size == 0) return;
-
-    sip = inet_ntoa(packet->sip);
-    snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
-    dip = inet_ntoa(packet->dip);
-    snprintf(dip_buf, sizeof(dip_buf), dip, strlen(dip));
-    strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&packet->tv->tv_sec));
-    if (!packet->request) type = "RSP";
-    if (packet->tcp) {
-        rlog("%s %s:%d=>%s:%d %s %u %u %d %u %.*s",
-             t_buf,
-             sip_buf,
-             packet->sport,
-             dip_buf,
-             packet->dport,
-             type,
-             packet->seq,
-             packet->ack,
-             packet->flags,
-             packet->size,
-             packet->size,
-             packet->payload
-        );
-    } else {
-        rlog("%s %s:%d=>%s:%d %s %u %.*s",
-             t_buf,
-             sip_buf,
-             packet->sport,
-             dip_buf,
-             packet->dport,
-             type,
-             packet->size,
-             packet->size,
-             packet->payload
-        );
-    }
-}
-
-static int is_noreply(int mode, char *req) {
-    int i, size, n;
-
-    size = strlen(req);
-    if (mode == P_REDIS) {
-        return size >= 12 && !strncasecmp(req, "REPLCONF ACK", 12);
-    } else if (mode == P_MEMCACHED) {
-        char *noreply_keys[] = {"get", "gets", "stats", "stat", "watch", "lru", "set", "add", "incr", "decr", "delete",
-            "replace", "append", "prepend", "cas", "touch", "flushall"};
-        n = sizeof(noreply_keys)/sizeof(noreply_keys[0]);
-        for (i = 0; i < n; i++) {
-            if (!strncasecmp(req, noreply_keys[i], strlen(noreply_keys[i]))) {
-                // request line didn't end with 'noreply'
-                if (i >= 6 && size > 7 && !strncasecmp(&req[size-7], "noreply", 7)) {
-                    return 1;
-                }
-                return 0;
-            }
-        }
-        // non memcached command line, treat as noreply
+    snprintf(key, sizeof(key), "%u:%d", upacket->ip_dst.s_addr, upacket->port_dst);
+    if ((stats = hashtable_get(sniffer->syn_tab, key)) != NULL)  {
+        stats_incr(stats, 1, upacket->size);
         return 1;
     }
-    return 0;
+    return -1;
 }
 
-static void record_simple_latency(server *srv, user_packet *packet) {
-    int latency_us;
-    char key[64], t_buf[64];
-    char *sip, *dip, sip_buf[64], dip_buf[64];
-    request *old_req;
+static void push_packet_to_lua_state(lua_State *state, struct user_packet *upacket) {
+    lua_getglobal(state, "process");
+    lua_newtable(state);
+    lua_table_push_int(state, "tv_sec", upacket->tv.tv_sec);
+    lua_table_push_int(state, "tv_usec", upacket->tv.tv_usec);
+    lua_table_push_string(state, "sip", inet_ntoa(upacket->ip_src));
+    lua_table_push_int(state, "sport", upacket->port_src);
+    lua_table_push_string(state, "dip", inet_ntoa(upacket->ip_dst));
+    lua_table_push_int(state, "dport", upacket->port_dst);
+    if (upacket->is_tcp) {
+        lua_table_push_int(state, "seq", upacket->seq);
+        lua_table_push_int(state, "ack", upacket->ack);
+        lua_table_push_int(state, "flags", upacket->flags);
+    }
+    lua_table_push_cstring(state, "payload", upacket->payload, upacket->payload_size);
+    lua_table_push_int(state, "size", upacket->payload_size);
+    if (lua_pcall(state, 1, 1, 0) != 0) {
+        log_message(FATAL, "%s", lua_tostring(state, -1));
+    }
+    lua_tonumber(state, -1);
+    lua_pop(state, -1);
+    lua_need_gc(state);
 
+}
 
-    if (packet->size == 0) {
-        if (packet->request && (packet->flags & 0x02)) { // clear the request if new syn was received
-            snprintf(key, 64, "%u:%d:%u:%d", packet->sip.s_addr, packet->sport, packet->dip.s_addr, packet->dport);
-            hashtable_del(srv->req_ht, key);
-        } else if (!packet->request && (packet->flags&0x05)) { // clear the request if the server closed the connection(rst(0x04)|fin(0x01)) 
-            snprintf(key, 64, "%u:%d:%u:%d", packet->dip.s_addr, packet->dport, packet->sip.s_addr, packet->sport);
-            hashtable_del(srv->req_ht, key);
+static void process_request_packet(struct sniffer *sniffer, struct user_packet *upacket) {
+    char key[64];
+    struct request *req;
+
+    snprintf(key, sizeof(key), "%u:%d %u:%d",
+            upacket->ip_src.s_addr, upacket->port_src,
+            upacket->ip_dst.s_addr, upacket->port_dst);
+    if (!hashtable_get(sniffer->requests, key)) {
+        req = malloc(sizeof(*req));
+        req->tv = upacket->tv;
+        req->seq = upacket->seq;
+        req->payload = NULL;
+        switch(sniffer->protocol) {
+            case ProtocolRedis:
+                req->payload = format_redis(upacket->payload, upacket->payload_size); break;
+            case ProtocolMemcached:
+                req->payload = format_memcached(upacket->payload, upacket->payload_size); break;
+            case ProtocolHTTP:
+                req->payload = format_http(upacket->payload, upacket->payload_size); break;
+            default:
+                req->payload = format_raw(upacket->payload, upacket->payload_size); break;
         }
+        req->size = strlen(req->payload);
+        hashtable_add(sniffer->requests, key, req);
+    }
+}
+
+static void process_response_packet(struct sniffer *sniffer, struct user_packet *upacket) {
+    char key[64], target[32], t_buf[64], sip_buf[64], dip_buf[64];
+    struct request *req;
+    int64_t delta;
+    char *ip_src, *ip_dst;
+    struct query_stats *stats;
+
+    snprintf(key, sizeof(key), "%u:%d %u:%d",
+            upacket->ip_dst.s_addr, upacket->port_dst,
+            upacket->ip_src.s_addr, upacket->port_src);
+    if ((req = hashtable_get(sniffer->requests, key)) != NULL) {
+        delta = (upacket->tv.tv_sec - req->tv.tv_sec) * 1000000
+            + (upacket->tv.tv_usec - req->tv.tv_usec);
+        snprintf(target, sizeof(target), "%u:%d", upacket->ip_src.s_addr, upacket->port_src);
+        if ((stats = hashtable_get(sniffer->syn_tab, target)) != NULL) {
+            stats_observer_latency(stats, delta);
+        }
+        if (sniffer->threshold && delta < sniffer->threshold*1000) {
+            hashtable_del(sniffer->requests, key);
+            return;
+        }
+
+        strftime(t_buf, 64, "%Y-%m-%d %H:%M:%S",localtime(&upacket->tv.tv_sec));
+        ip_src = inet_ntoa(upacket->ip_src);
+        snprintf(sip_buf, sizeof(sip_buf), ip_src, strlen(ip_src));
+        ip_dst = inet_ntoa(upacket->ip_dst);
+        snprintf(dip_buf, sizeof(dip_buf), ip_dst, strlen(ip_dst));
+        color_printf(GREEN, "%s.%06d %s:%d => %s:%d | %.3f ms | %s\n",
+                    t_buf, upacket->tv.tv_usec,
+                    dip_buf, upacket->port_dst,
+                    sip_buf, upacket->port_src,
+                    delta/1000.0, req->payload);
+        hashtable_del(sniffer->requests, key);
+    }
+}
+
+void print_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
+}
+
+void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
+    int src;
+    uint8_t syn_mask = 0x02, ack_mask = 0x10;
+    char key[32];
+    struct query_stats *stats;
+
+    // push to lua state if script exists 
+    if (sniffer->lua_state) {
+        push_packet_to_lua_state(sniffer->lua_state, upacket);
+        return;
+    } else if (sniffer->protocol == ProtocolRaw) {
+        print_user_packet(sniffer, upacket);
         return;
     }
-
-    if (packet->request) {
-        snprintf(key, 64, "%u:%d:%u:%d", packet->sip.s_addr, packet->sport, packet->dip.s_addr, packet->dport);
-        request *req = parse_redis_request(packet->payload, packet->size);
-        if (req) {
-            if (is_noreply(srv->opts->mode, req->buf)) {
-                free(req);
-                return; // don't store the noreply request
+    if (upacket->payload_size == 0) {
+        if ((upacket->flags & syn_mask) != 0) {
+            src = (upacket->flags & ack_mask) != 0; 
+            if (src) {
+                snprintf(key, sizeof(key), "%u:%d", upacket->ip_src.s_addr, upacket->port_src);
+            } else {
+                snprintf(key, sizeof(key), "%u:%d", upacket->ip_dst.s_addr, upacket->port_dst);
             }
-            req->tv = *(packet->tv);
-            if ((old_req = hashtable_add(srv->req_ht, key, req)) != NULL) {
-                if(srv->is_server_mode) old_req->tv = *(packet->tv);
-                free(req);
+            if (!hashtable_get(sniffer->syn_tab, key)) {
+                stats = calloc(1, sizeof(*stats));
+                stats->ip = src ? upacket->ip_src : upacket->ip_dst;
+                stats->port = src ? upacket->port_src : upacket->port_dst;
+                hashtable_add(sniffer->syn_tab, key, stats);
             }
         }
     } else {
-        snprintf(key, 64, "%u:%d:%u:%d", packet->dip.s_addr, packet->dport, packet->sip.s_addr, packet->sport);
-        request *req = hashtable_get(srv->req_ht, key);
-        if (req) {
-            latency_us = (packet->tv->tv_sec - req->tv.tv_sec) * 1000000 + (packet->tv->tv_usec - req->tv.tv_usec);
-            int ind = port_in_target(srv, packet->sport);
-            stats_update_latency(srv->st, ind, latency_us);
-            if (latency_us >= srv->opts->threshold_ms*1000) {
-                if (srv->opts->threshold_ms>0) stats_incr_slow_count(srv->st, ind);
-                strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&packet->tv->tv_sec));
-
-                sip = inet_ntoa(packet->sip);
-                snprintf(sip_buf, sizeof(sip_buf), sip, strlen(sip));
-                dip = inet_ntoa(packet->dip);
-                snprintf(dip_buf, sizeof(dip_buf), dip, strlen(sip));
-                rlog("%s.%06d %s:%d => %s:%d | %.3f ms | %s", t_buf, packet->tv->tv_usec,
-                     dip_buf, packet->dport, sip_buf, packet->sport, latency_us/1000.0, req->buf);
-            }
-            hashtable_del(srv->req_ht, key);
+        switch(packet_direction(sniffer, upacket)) {
+            case 0:
+                return process_response_packet(sniffer, upacket);
+            case 1:
+                return process_request_packet(sniffer, upacket);
         }
-    }
-}
-
-static void process_tcp_packet(server *srv, user_packet *packet) {
-    if (srv->opts->mode == P_RAW) {
-        push_packet_to_user(srv, packet);
-    } else {
-        // the memcached/http request can be treat as redis inline
-        record_simple_latency(srv, packet);
-    }
-}
-
-static void process_udp_packet(server *srv, user_packet *packet) {
-    push_packet_to_user(srv, packet);
-}
-
-static int8_t is_request(server *srv, user_packet *packet) {
-    int i;
-
-    if (packet->sport != packet->dport) {
-        return port_in_target(srv, packet->dport) != -1;
-    }
-    for (i = 0; i < srv->n_server; i++) {
-        if (srv->servers[i].s_addr == packet->dip.s_addr) return 1;
-    }
-    return 0;
-}
-
-void extract_packet_handler(unsigned char *user,
-                       const struct pcap_pkthdr *header,
-                       const unsigned char *packet) {
-    const struct ip* ip_packet;
-    user_packet upacket;
-
-    server *srv = (server*) user;
-    switch (pcap_datalink((pcap_t*)srv->sniffer)) {
-        case DLT_NULL:
-            ip_packet = (const struct ip *)(packet + NULL_HDRLEN); break;
-        case DLT_LINUX_SLL:
-            ip_packet = (const struct ip *)(packet + sizeof(struct sll_header)); break;
-        case DLT_EN10MB:
-            ip_packet = (const struct ip *)(packet + sizeof(struct ether_header)); break;
-        case DLT_RAW:
-            ip_packet = (const struct ip *)packet; break;
-        default:
-            return; // do nothing with unknown link type packet
-    }
-    if (ip_packet->ip_p != IPPROTO_TCP && ip_packet->ip_p != IPPROTO_UDP) {
-        return;
-    }
-    switch (ip_packet->ip_p) {
-        case IPPROTO_TCP:
-            gen_tcp_packet(&header->ts, ip_packet, &upacket);
-            upacket.request = is_request(srv, &upacket);
-            process_tcp_packet(srv, &upacket);
-            stats_update_bytes(srv->st, upacket.request, upacket.size);
-            break;
-        case IPPROTO_UDP:
-            gen_udp_packet(&header->ts, ip_packet, &upacket);
-            upacket.request = is_request(srv, &upacket);
-            process_udp_packet(srv, &upacket);
-            stats_update_bytes(srv->st, upacket.request, upacket.size);
-            break;
-        default:
-            break;
     }
 }

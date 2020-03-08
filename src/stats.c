@@ -1,88 +1,64 @@
-/**
- *   tcpkit --  toolkit to analyze tcp packet
- *   Copyright (C) 2018  @git-hulk
- *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- **/
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
+#include "cJSON.h"
 #include "stats.h"
 
-int64_t latency_buckets[N_BUCKET] = {
-    100, 200, 500, 1000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 3000000, 5000000,
-    10000000, 20000000
+int64_t latency_buckets[] = {
+    100, 200, 500, 1000, 5000,
+    10000, 20000, 50000, 100000,
+    200000, 500000, 1000000, 2000000,
+    3000000, 5000000, 10000000, 20000000
 };
 
-const char *latency_buckets_name[N_BUCKET] = {
-   "0.1ms", "0.2ms", "0.5ms", "1ms", "5ms", "10ms", "20ms", "50ms", "100ms", "200ms","500ms", "1s", "2s", "3s", "5s",
-   "10s", "20s", "+inf"
+const char *latency_buckets_name[] = {
+   "<0.1ms", "0.1ms~0.2ms", "0.2~0.5ms",
+   "0.5ms~1ms", "1ms~5ms", "5ms~10ms", "10ms~20ms",
+   "20ms~50ms", "50ms~100ms", "100ms~200ms","200ms~500ms",
+   "0.5s~1s", "1s~2s", "2s~3s", "3s~5s",
+   "5s~10s", "10s~20s", "+inf"
 };
 
-stats *stats_create(int n) {
-    int i, j;
+cJSON *create_stats_object(struct query_stats *stats) {
+    int i, n;
+    cJSON *stats_object, *bucket_object, *latency_object;
 
-    stats *st = malloc(sizeof(*st));
-    if (!st) return NULL;
+    stats_object = cJSON_CreateObject();
+    cJSON_AddNumberToObject(stats_object, "requests", (double)stats->requests);
+    cJSON_AddNumberToObject(stats_object, "request_bytes", (double)stats->request_bytes);
+    cJSON_AddNumberToObject(stats_object, "responses", (double)stats->responses);
+    cJSON_AddNumberToObject(stats_object, "response_bytes", (double)stats->response_bytes);
 
-    st->n_latency = n;
-    st->req_packets = st->rsp_packets = 0;
-    st->req_bytes = st->rsp_bytes = 0;
-    st->latencies = malloc(n*sizeof(latency_stat));
-    if (!st->latencies) return NULL;
+    latency_object = cJSON_CreateArray();
+    n = sizeof(latency_buckets)/ sizeof(latency_buckets[0]);
     for (i = 0; i < n; i++) {
-        st->latencies[i].total_reqs = 0;
-        st->latencies[i].total_costs = 0;
-        st->latencies[i].slow_counts = 0;
-        for(j = 0; j < N_BUCKET; j++) {
-           st->latencies[i].buckets[j] = 0;
+        if (stats->buckets[i]) {
+            bucket_object = cJSON_CreateObject();
+            cJSON_AddNumberToObject(bucket_object, latency_buckets_name[i], stats->buckets[i]);
+            cJSON_AddItemToArray(latency_object, bucket_object);    
         }
     }
-    return st;
+    cJSON_AddItemToObject(stats_object, "latency", latency_object);    
+    return stats_object;
 }
 
-void stats_destroy(stats *st) {
-   free(st->latencies);
-   free(st);
-}
-
-void stats_update_bytes(stats *st, int req, uint64_t bytes) {
-    if (req) {
-        st->req_bytes += bytes;
-        st->req_packets += 1;
+void stats_incr(struct query_stats *stats, int is_request, int bytes) {
+    if (is_request) {
+        stats->requests += 1;
+        stats->request_bytes += bytes;
     } else {
-        st->rsp_bytes += bytes;
-        st->rsp_packets += 1;
+        stats->responses += 1;
+        stats->response_bytes += bytes;
     }
 }
 
-void stats_incr_slow_count(stats *st, int ind) {
-    st->latencies[ind].slow_counts++;
-}
-
-void stats_update_latency(stats *st, int ind, int64_t latency_us) {
+void stats_observer_latency(struct query_stats *stats, int64_t latency) {
     int i, n;
 
-    if (latency_us < 0) latency_us = 0;
-    st->latencies[ind].total_reqs++;
-    st->latencies[ind].total_costs += latency_us;
-
+    if (latency < 0) latency = 0;
     n = sizeof(latency_buckets)/ sizeof(latency_buckets[0]);
     for (i = 0; i < n-1; i++) {
-        if (latency_buckets[i] >= latency_us) {
-            st->latencies[ind].buckets[i]++;
+        if (latency_buckets[i] >= latency) {
+            stats->buckets[i]++;
             return;
         }
     }
-    st->latencies[ind].buckets[n-1]++;
+    stats->buckets[n-1]++;
 }

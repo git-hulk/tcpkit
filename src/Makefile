@@ -13,7 +13,8 @@ TCPKIT_CC = $(CC) $(CFLAGS) $(CINCLUDES)
 PROG = tcpkit
 
 
-OBJS = util.o array.o hashtable.o logger.o packet.o redis.o server.o sniffer.o stats.o tcpkit.o vm.o
+OBJS = tcpkit.o packet.o sniffer.o server.o lua.o \
+	   hashtable.o protocol.o dumper.o log.o cJSON.o stats.o
 
 all: deps tcpkit
 .PHONY: all
@@ -34,7 +35,7 @@ deps: nop
 	@cd ../deps/lua/src && make a
 
 clean:
-	- rm -rf $(PROG) && rm -rf  *.o
+	- rm -rf $(PROG) dep.mk *.o 
 	@cd ../deps/libpcap/ && make clean
 	@cd ../deps/lua/src/ && make clean
 nop:

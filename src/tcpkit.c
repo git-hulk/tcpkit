@@ -1,5 +1,5 @@
 /**
- *   tcpkit --  toolkit to analyze tcp packets
+ *   tcpkit --  toolkit to analyze tcp packet
  *   Copyright (C) 2018  @git-hulk
  *
  *   This program is free software; you can redistribute it and/or modify
@@ -13,233 +13,179 @@
  *   GNU General Public License for more details.
  *
  **/
-#include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <errno.h>
-#include <getopt.h>
 #include <signal.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <string.h>
+#include <pcap.h>
 
-#include <lua.h>
-
-#include "vm.h"
-#include "util.h"
-#include "packet.h"
-#include "array.h"
+#include "log.h"
 #include "tcpkit.h"
-#include "sniffer.h"
 #include "server.h"
-#include "logger.h"
 
-#define VERSION "1.0.1"
-
-static server srv;
+struct server *srv;
 
 void signal_handler(int sig) {
     if (sig == SIGINT || sig == SIGTERM) {
-        server_print_stats(&srv);
-        server_deinit(&srv);
-        exit(0);
+        server_terminate(srv);
     }
 }
 
-static void usage() {
-    fprintf(stderr, "TCPKIT is a tool to capture tcp packets and analyze the packets with lua.\n");
-    fprintf(stderr, "\t-s which server ip to monitor, e.g. 192.168.1.2,192.168.1.3\n");
-    fprintf(stderr, "\t-p which n_latency to monitor, e.g. 6379,6380\n");
-    fprintf(stderr, "\t-P stats listen port, default is 33333\n");
-    fprintf(stderr, "\t-i network card interface, e.g. bond0, lo, em0... see 'ifconfig'\n");
-    fprintf(stderr, "\t-d daemonize, run process in background\n");
-    fprintf(stderr, "\t-r set offline file captured by tcpdump or tcpkit\n");
-    fprintf(stderr, "\t-t request latency threshold(unit in millisecond), default is 50ms\n");
-    fprintf(stderr, "\t-m protocol mode, raw,redis,memcached,http\n");
-    fprintf(stderr, "\t-w dump packets to 'savefile'\n");
-    fprintf(stderr, "\t-S lua script path, default is ../scripts/example.lua\n");
-    fprintf(stderr, "\t-B operating system capture buffer size, in units of KiB (1024 bytes)\n");
-    fprintf(stderr, "\t-o log output file\n");
-    fprintf(stderr, "\t-u udp\n");
-    fprintf(stderr, "\t-v version\n");
-    fprintf(stderr, "\t-h help\n");
+void usage() {
+    const char *usage_literal = ""
+        "the tcpkit was designed to make network packets programable with LUA by @git-hulk\n"
+        "   -h, Print the tcpkit version strings, print a usage message, and exit\n"
+        "   -i interface, Listen on network card interface\n"
+        "   -r file, Read packets from file (which was created with the -w option or by other tools that write pcap)\n"
+        "   -B buffer_size, Set the operating system capture buffer size to buffer_size, in units of KiB (1024 bytes)\n"
+        "   -s snaplen, Snarf snaplen bytes of data from each packet rather than the default of 1500 bytes\n" 
+        "   -S file, Push packets to lua state if the script was specified\n"
+        "   -t threshold, Print the request lantecy which slower than the threshold, in units of Millisecond\n"
+        "   -p protocol, Parse the packet if the protocol was specified (supports: redis, memcached, http, raw)\n"
+        "   -P stats port, Listen port to fetch the latency stats, default is 33333\n\n\n"
+        ""
+        "For example:\n\n"
+        "   `tcpkit -i eth0 tcp port 6379 -p redis` was used to monitor the redis reqeust latency\n\n"
+        "   `tcpkit -i eth0 tcp port 6379 -p redis -w 6379.pcap` would also dump the packets to `6379.pcap`\n\n"
+        "   `tcpkit -i eth0 tcp port 6379 -p redis -t 10` would only print the request latency slower than 10ms\n";
+    color_printf(GREEN, "%s\n", usage_literal);
+    exit(0);
 }
 
-static struct array *parse_ports(char *input) {
-    int i, port;
-    char *elem;
-    struct array *ports, *tokens;
-
-    tokens = split_string(input, ',');
-    if (!tokens) return NULL;
-    ports = array_alloc(sizeof(int), array_used(tokens));
-    for (i = 0; i < array_used(tokens); i++) {
-        port = atoi(*(char **)array_pos(tokens, i));
-        if (port > 0 && port < 65535) {
-            elem = array_push(ports);
-            memcpy(elem, (char *)&port, sizeof(int));
-        }
-    }
-    free_split_string(tokens);
-    return ports;
-}
-
-static int parse_protocol(const char *protocol) {
-   if (!strncasecmp(protocol, "redis", strlen(protocol))) {
-       return P_REDIS;
-   } else if (!strncasecmp(protocol, "memcached", strlen(protocol))) {
-       return P_MEMCACHED;
-   } else if (!strncasecmp(protocol, "http", strlen(protocol))) {
-       return P_HTTP;
-   }
-   return P_RAW;
-}
-
-static options* parse_options(int argc, char **argv) {
-    int ch, show_usage = 0;
-    options *opts;
-
-    opts = calloc(1, sizeof(*opts));
-    opts->tcp = 1;
-    opts->mode = P_RAW;
-    opts->threshold_ms = 0;
+void init_options(struct options *opts) {
+    opts->dev = strdup("any");
+    opts->filter = NULL;
+    opts->offline_file = NULL;
+    opts->save_file = NULL;
+    opts->script = NULL;
+    opts->snaplen = 1500;
+    opts->buf_size = 512 * 1024 * 1024;
+    opts->print_usage = 0;
+    opts->print_version = 0;
+    opts->protocol = ProtocolRaw;
     opts->stats_port = 33333;
-    opts->threshold_ms = 50;
-    opts->buffer_size = 2000 * 1024 * 1024;
-    while((ch = getopt(argc, argv, "s:p:P:r:t:m:w:i:S:B:o:udh")) != -1) {
-        switch(ch) {
-            case 's': opts->servers = split_string(optarg, ','); break;
-            case 'p': opts->ports = parse_ports(optarg); break;
-            case 'P': opts->stats_port = atoi(optarg); break;
-            case 'r': opts->offline_file = strdup(optarg); break;
-            case 't': opts->threshold_ms = atoi(optarg); break;
-            case 'm': opts->mode = parse_protocol(optarg); break;
-            case 'w': opts->save_file = strdup(optarg); break;
-            case 'i': opts->device = strdup(optarg); break;
-            case 'S': opts->script = strdup(optarg); break;
-            case 'o': opts->logfile = strdup(optarg); break;
-            case 'B': opts->buffer_size = atoi(optarg) * 1024; break;
-            case 'd': opts->daemonize = 1; break;
-            case 'u': opts->tcp = 0; break;
-            case 'h': show_usage = 1; break;
-            default: break;
+}
+
+void free_options(struct options *opts) {
+    if (opts->dev) free(opts->dev);
+    if (opts->filter) free(opts->filter);
+    if (opts->offline_file) free(opts->offline_file);
+    if (opts->script) free(opts->script);
+    free(opts);
+}
+
+struct options *parse_options(int argc, char **argv) {
+    int i, lastarg;
+    struct options *opts;
+
+    opts = malloc(sizeof(*opts));
+    init_options(opts);
+    for (i = 1; i < argc; i++) {
+        lastarg = (i == (argc-1));
+        if (!strcmp(argv[i],"-v")) {
+            opts->print_version = 1; 
+        } else if (!strcmp(argv[i],"-h")) {
+            opts->print_usage = 1;
+        } else if (!strcmp(argv[i],"-i")) {
+            if (lastarg) goto invalid;
+            if (opts->dev) free(opts->dev);
+            opts->dev = strdup(argv[++i]);
+        } else if (!strcmp(argv[i],"-B")) {
+            if (lastarg) goto invalid;
+            opts->buf_size = atoi(argv[++i]) * 1024;
+        } else if (!strcmp(argv[i],"-t")) {
+            if (lastarg) goto invalid;
+            opts->threshold = atoi(argv[++i]);
+        } else if (!strcmp(argv[i],"-p")) {
+            if (lastarg) goto invalid;
+            if (!strcmp(argv[i+1],"raw")) {
+                opts->protocol = ProtocolRaw;
+            } else if (!strcmp(argv[i+1],"redis")) {
+                opts->protocol = ProtocolRedis;
+            } else if (!strcmp(argv[i+1],"memcached")) {
+                opts->protocol = ProtocolMemcached;
+            } else if (!strcmp(argv[i+1],"http")) {
+                opts->protocol = ProtocolHTTP;
+            } else {
+                goto invalid;
+            }
+            i++;
+        } else if (!strcmp(argv[i],"-P")) {
+            if (lastarg) goto invalid;
+            opts->stats_port = atoi(argv[++i]);
+        } else if (!strcmp(argv[i],"-s")) {
+            if (lastarg) goto invalid;
+            opts->snaplen = atoi(argv[++i]);
+        } else if (!strcmp(argv[i],"-S")) {
+            if (lastarg) goto invalid;
+            if (opts->script) free(opts->script);
+            opts->script = strdup(argv[++i]);
+        } else if (!strcmp(argv[i],"-r")) {
+            if (lastarg) goto invalid;
+            if (opts->offline_file) free(opts->offline_file);
+            opts->offline_file = strdup(argv[++i]);
+        } else if (!strcmp(argv[i],"-w")) {
+            if (lastarg) goto invalid;
+            if (opts->save_file) free(opts->save_file);
+            opts->save_file = strdup(argv[++i]);
+        } else {
+            if (argv[i][0] == '-') goto invalid;
+            // treat other options as filter
+            if (!opts->filter) {
+                opts->filter = strdup(argv[i]);
+            } else {
+                int new_size, old_size = strlen(opts->filter);
+                // add 2 for white space and terminal char 
+                new_size = old_size+strlen(argv[i])+2;
+                opts->filter = realloc(opts->filter, new_size);
+                opts->filter[old_size++] = ' ';
+                memcpy(opts->filter+old_size, argv[i], strlen(argv[i]));
+                opts->filter[new_size-1] = '\0'; 
+            }
         }
     }
-    if (show_usage) {
-        usage();
-        exit(0);
-    }
-    if (!opts->device) opts->device = strdup("any");
+    if (!opts->filter) opts->filter = strdup("tcp");
     return opts;
-}
 
-static char *gen_filter(server *srv) {
-    int i, n = 0, size = 0;
-    char *buf;
-    options *opts;
-
-    opts = srv->opts;
-    size = 2*32*array_used(opts->ports)+2*64*srv->n_server;
-    buf = malloc(size);
-
-    buf[n++] = '(';
-    buf[n++] = '(';
-    for (i = 0; i < srv->n_server; i++) {
-        n += snprintf(buf+n, size-n, "src host %s or ", inet_ntoa(srv->servers[i]));
-    }
-    n -= 4;
-    buf[n++] = ')';
-    n += snprintf(buf+n, size-n, " and (");
-    for (i = 0; i < array_used(opts->ports); i++) {
-        n += snprintf(buf+n, size-n, "src port %d or ", *(int*)array_pos(opts->ports, i));
-    }
-    n -= 4;
-    buf[n++] = ')';
-    n += snprintf(buf+n, size-n, ") or ((");
-    for (i = 0; i < srv->n_server; i++) {
-        n += snprintf(buf+n, size-n, "dst host %s or ", inet_ntoa(srv->servers[i]));
-    }
-    n -= 4;
-    buf[n++] = ')';
-    n += snprintf(buf+n, size-n, " and (");
-    for (i = 0; i < array_used(opts->ports); i++) {
-        n += snprintf(buf+n, size-n, "dst port %d or ", *(int*)array_pos(opts->ports, i));
-    }
-    n -= 4;
-    buf[n++] = ')';
-    buf[n++] = ')';
-    buf[n++] = '\0';
-    return buf;
-}
-
-static void daemonize() {
-    pid_t pid;
-
-    pid = fork();
-    if (pid < 0) {
-        alog(ERROR, "Failed to fork the process");
-    }
-    if (pid > 0) exit(EXIT_SUCCESS); // parent process
-    // change the file mode
-    umask(0);
-    if (setsid() < 0) {
-        alog(ERROR, "Failed to set session id, err: %s", strerror(errno));
-    }
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
+invalid:
+    log_message(FATAL, "Invalid option \"%s\" or option argument missing",argv[i]);
+    return 0;
 }
 
 int main(int argc, char **argv) {
-    char err_buf[MAX_ERR_BUFF_SIZE];
-    pcap_t *sniffer;
+    char err[MAX_ERR_BUFF_SIZE];
+    struct options *opts; 
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    set_log_fp(stdout);
-    alog(INFO, "TCPKIT @version %s, developed by @git-hulk", VERSION);
-    srv.opts = parse_options(argc, argv);
-    if (getuid() != 0 && !srv.opts->offline_file) {
-        alog(FATAL, "You need to be root to capture the packets online.");
+    print_redirect(stdout);
+    opts = parse_options(argc, argv);
+    if (!opts) log_message(FATAL, "Failed to parse options, %s", err);
+
+    if (opts->print_usage) {
+        free_options(opts);
+        usage();
     }
-    if (array_used(srv.opts->ports) <= 0) {
-        alog(FATAL, "Please use -p [port1,port2,...] to specify the server ports");
+    if (getuid() != 0 && !opts->offline_file) {
+        free_options(opts);
+        log_message(FATAL, "You don't have permission to capture on the network card interface");
     }
-    if (server_init(&srv) == -1) {
-        alog(FATAL, "Failed to init server");
+    if (opts->snaplen < 64) opts->snaplen = 64;
+    if (opts->protocol != ProtocolRaw && opts->snaplen > 256) {
+        opts->snaplen = 256;
     }
-    if (srv.n_server == 0) {
-        alog(FATAL, "Please use -s [server1,server2,...] to specify the server ips");
+    srv = server_create(opts, err);
+    if (!srv) {
+        free_options(opts);
+        log_message(FATAL, "Failed to create the sniffer server, %s", err);
     }
-    if (!srv.opts->offline_file) {
-        sniffer = sniffer_packet_online(&srv.opts->device, srv.opts->buffer_size, err_buf);
-    } else {
-        sniffer = sniffer_packet_offline(srv.opts->offline_file, err_buf);
+    if (server_run(srv, err) == -1) {
+        server_destroy(srv);
+        free_options(opts);
+        log_message(FATAL, "Failed to run the server, %s", err);
     }
-    if (!sniffer) alog(FATAL, "Failed to setup the sniffer, err: %s", err_buf);
-    srv.sniffer = sniffer;
-    srv.filter = gen_filter(&srv);
-    alog(INFO, "Running in [%s] side with device %s with filter[%s]",
-            srv.is_server_mode?"server":"client", srv.opts->device, srv.filter);
-    if (srv.opts->logfile) {
-        FILE *fp = fopen(srv.opts->logfile, "a");
-        if (!fp) alog(FATAL, "Failed to open log file, err:%s", strerror(errno));
-        set_log_fp(fp);
-    }
-    if (srv.opts->script) {
-        srv.vm = vm_open_with_script(srv.opts->script, err_buf);
-        if (!srv.vm) alog(FATAL, "Failed to open vm, err: %s", err_buf);
-    }
-    if (srv.opts->daemonize) daemonize();
-    // don't setup stats port while offline or raw mode
-    if (!srv.opts->offline_file && srv.opts->mode != P_RAW) {
-        server_create_stats_thread(&srv);
-    }
-    if (sniffer_loop(sniffer, srv.filter, extract_packet_handler, &srv) == -1) {
-        alog(FATAL, "Failed to start the sniffer, err: %s", pcap_geterr(sniffer));
-    }
-    server_print_stats(&srv);
-    server_deinit(&srv);
+    server_destroy(srv);
+    free_options(opts);
     return 0;
 }

@@ -17,28 +17,38 @@
 #ifndef TCPKIT_PACKET_H
 #define TCPKIT_PACKET_H
 
-#include <time.h>
-#include <stdint.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <pcap/pcap.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+#include <net/ethernet.h>
 
-typedef struct {
-    const struct timeval *tv;
-    struct in_addr sip;
-    struct in_addr dip;
-    uint16_t sport;
-    uint16_t dport;
+#include "sniffer.h"
+
+struct user_packet {
     uint8_t flags;
+    int8_t is_tcp;
+    int8_t is_request;
+    struct timeval tv;
+    struct in_addr ip_src;
+    struct in_addr ip_dst;
+    uint16_t port_src;
+    uint16_t port_dst;
     unsigned int seq;
     unsigned int ack;
-    char *payload;
-    unsigned int size;
-    int8_t request;
-    int8_t tcp;
-} user_packet;
+    bpf_u_int32 size;
+    int payload_size;
+    const char *payload;
+};
 
-void extract_packet_handler(unsigned char *user,
-                            const struct pcap_pkthdr *header,
-                            const unsigned char *packet);
-#endif //TCPKIT_PACKET_H
+void process_tcp_packet(struct sniffer *sniffer,
+        const struct timeval tv,
+        const struct ip* ip_packet,
+        struct user_packet *packet);
+
+void process_udp_packet(struct sniffer *sniffer,
+        const struct timeval tv,
+        const struct ip* ip_packet,
+        struct user_packet *packet);
+
+void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket); 
+#endif

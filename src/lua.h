@@ -14,19 +14,18 @@
  *
  **/
 
-#ifndef TCPKIT_VM_H
-#define TCPKIT_VM_H
+#ifndef TCPKIT_LUA_H
+#define TCPKIT_LUA_H
 
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
 
-lua_State *vm_open_with_script(const char *file, char *err_buf);
-void vm_push_table_boolean(lua_State *vm, const char *key, int bool);
-void vm_push_table_int(lua_State *vm, const char *key, long value);
-void vm_push_table_string(lua_State *vm, const char *key, char *value);
-void vm_push_table_cstring(lua_State *vm, const char *key, char *value, int size);
-void vm_need_gc(lua_State* vm);
-void vm_close(lua_State *state);
-
-#endif //TCPKIT_VM_H
+lua_State *lua_state_create(const char *file, char *err);
+void lua_table_push_boolean(lua_State *state, const char *key, int bool);
+void lua_table_push_int(lua_State *state, const char *key, long value);
+void lua_table_push_string(lua_State *state, const char *key, char *value);
+void lua_table_push_cstring(lua_State *state, const char *key, const char *value, int size);
+void lua_need_gc(lua_State* state);
+void lua_close(lua_State *state);
+#endif

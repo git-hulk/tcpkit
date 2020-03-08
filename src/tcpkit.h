@@ -14,52 +14,30 @@
  *
  **/
 
-#ifndef TCPKIT_TCPIKT_H
-#define TCPKIT_TCPIKT_H
-
-#include <pthread.h>
-#include <lua.h>
-#include <pcap/pcap.h>
-
-#include "stats.h"
-#include "hashtable.h"
+#ifndef TCPKIT_TCPKIT_H
+#define TCPKIT_TCPKIT_H
 
 #define MAX_ERR_BUFF_SIZE 256
+typedef enum {
+    ProtocolRaw = 1,
+    ProtocolRedis,
+    ProtocolMemcached,
+    ProtocolHTTP,
+}ProtocolType;
 
-typedef struct {
-    struct array *servers;
-    struct array *ports;
-    int stats_port;
-    int tcp;
-    int threshold_ms;
-    char *logfile;
+struct options {
+    char *dev;
+    char *filter;
+    char *script;
     char *offline_file;
     char *save_file;
-    char *script;
-    char *device;
-    int mode;
-    int daemonize;
-    int buffer_size;
-}options;
+    int snaplen;
+    int buf_size;
+    int threshold;
+    int print_version;
+    int print_usage;
+    int stats_port;
+    ProtocolType protocol;
+};
 
-typedef struct {
-    options *opts;
-    pcap_t *sniffer;
-    char *filter;
-    lua_State *vm;
-    stats *st;
-    hashtable *req_ht;
-    pthread_t stats_tid;
-    int stop;
-    struct in_addr *servers;
-    int n_server;
-    int is_server_mode;
-} server;
-
-typedef enum {
-   P_RAW = 0,
-   P_REDIS,
-   P_MEMCACHED,
-   P_HTTP,
-}PROTOCOL_TYPE;
-#endif //TCPKIT_TCPIKT_H
+#endif

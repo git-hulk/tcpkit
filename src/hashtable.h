@@ -34,4 +34,5 @@ void hashtable_destroy(hashtable *ht);
 void *hashtable_get(hashtable *ht, char *key);
 void *hashtable_add(hashtable *ht, char *key, void *value);
 int hashtable_del(hashtable *ht, char *key);
-#endif //TCPKIT_HASHTABLE_H
+void **hashtable_values(hashtable *ht, int *cnt);
+#endif

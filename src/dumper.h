@@ -14,29 +14,21 @@
  *
  **/
 
-#ifndef TCPKIT_LOGGER_H
-#define TCPKIT_LOGGER_H
+#ifndef TCPKIT_DUMPER_H
+#define TCPKIT_DUMPER_H
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <pcap.h>
+#include "tcpkit.h"
 
-#define C_RED "\033[31m"
-#define C_GREEN "\033[32m"
-#define C_YELLOW "\033[33m"
-#define C_PURPLE "\033[35m"
-#define C_NONE "\033[0m"
-#define GB (1024*1024*1024)
-
-enum LEVEL {
-    DEBUG = 1,
-    INFO,
-    WARN,
-    ERROR,
-    FATAL
+struct dumper {
+    struct bpf_program *bpf;
+    pcap_dumper_t *file;
+    pcap_t *pcap;
 };
 
-void rlog(char *fmt, ...);
-void alog(enum LEVEL loglevel, char *fmt, ...);
-void set_log_fp(FILE *fp);
+struct dumper *dumper_create(struct options *opts, char *err); 
+void dumper_terminate(struct dumper *d);
+int dumper_run(struct dumper *d);
+void dumper_destroy(struct dumper *d);
 
-#endif //TCPKIT_LOGGER_H
+#endif

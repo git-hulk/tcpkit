@@ -18,10 +18,38 @@
 #define TCPKIT_SNIFFER_H
 
 #include <pcap.h>
+#include <lua.h>
+#include "tcpkit.h"
+#include "stats.h"
+#include "hashtable.h"
 
-pcap_t *sniffer_packet_online(char **device, int buffer_size, char *err_buf);
-pcap_t *sniffer_packet_offline(const char *file, char *err_buf);
-int sniffer_loop(pcap_t *sniffer, const char *filter, pcap_handler handler, void *user);
-void sniffer_terminate(pcap_t *sniffer);
+struct sniffer {
+    pcap_t *pcap;
+    char *dev;
+    char *filter;
+    int protocol;
+    int threshold;
 
-#endif //TCPKIT_SNIFFER_H
+    struct hashtable *syn_tab;
+    struct hashtable *requests;
+    lua_State *lua_state;
+    struct bpf_program *bpf;
+};
+
+struct request {
+    struct timeval tv;
+    int seq;
+    int size;
+    char *payload;
+};
+
+
+struct sniffer *sniffer_create(struct options *opts, char *err);
+int sniffer_run(struct sniffer *sniffer);
+pcap_t *sniffer_offline(const char *file, char *err);
+pcap_t *sniffer_online(const char *dev, int snaplen, int buf_size, char *err);
+int sniffer_loop(pcap_t *pcap, const char *filter, pcap_handler handler, void *user); 
+struct bpf_program *sniffer_compile(pcap_t *pcap, const char *filter, char *err); 
+void sniffer_terminate(struct sniffer *sniffer);
+void sniffer_destroy(struct sniffer *sniffer); 
+#endif

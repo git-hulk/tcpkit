@@ -19,27 +19,39 @@
 #include <stdarg.h>
 #include <string.h>
 
-#include "logger.h"
+#include "log.h"
 
-static enum LEVEL log_level = INFO;
 static FILE *log_fp = NULL;
+static enum LEVEL log_level = INFO;
 
-void set_log_fp(FILE *fp) {
+void print_redirect(FILE *fp) {
     log_fp = fp;
 }
 
-void rlog(char *fmt, ...) {
+void raw_printf(char *fmt, ...) {
+    va_list args;
+
+    va_start(args, fmt);
+    color_printf(NULL, fmt, args);
+    va_end(args);
+}
+
+void color_printf(const char *color, char *fmt, ...) {
     va_list ap;
     char buf[4096];
 
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    fprintf(log_fp, "%s\n", buf);
-    if (log_fp != stdout) fflush(log_fp);
+    if(log_fp != stdout || color == NULL) {
+        fprintf(log_fp, "%s",  buf);
+        fflush(log_fp);
+    } else {
+        fprintf(log_fp, "%s%s"NONE"", color, buf);
+    }
 }
 
-void alog(enum LEVEL loglevel, char *fmt, ...) {
+void log_message(enum LEVEL loglevel, char *fmt, ...) {
     va_list ap;
     time_t now;
     char buf[4096];
@@ -47,28 +59,25 @@ void alog(enum LEVEL loglevel, char *fmt, ...) {
     char *msg = NULL;
     const char *color = "";
 
-    if(loglevel < log_level) {
-        return;
-    }
+    if(loglevel < log_level) return; 
 
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     switch(loglevel) {
         case DEBUG: msg = "DEBUG"; break;
-        case INFO:  msg = "INFO";  color = C_GREEN; break;
-        case WARN:  msg = "WARN";  color = C_YELLOW; break;
-        case ERROR: msg = "ERROR"; color = C_RED; break;
-        case FATAL: msg = "FATAL"; color = C_RED; break;
+        case INFO:  msg = "INFO";  color = GREEN; break;
+        case WARN:  msg = "WARN";  color = YELLOW; break;
+        case ERROR: msg = "ERROR"; color = RED; break;
+        case FATAL: msg = "FATAL"; color = RED; break;
     }
-
     now = time(NULL);
     strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&now));
     if(log_fp != stdout) {
         fprintf(log_fp, "[%s] [%s] %s\n", t_buf, msg, buf);
         fflush(log_fp);
     } else {
-        fprintf(log_fp, "%s[%s] [%s] %s"C_NONE"\n", color, t_buf, msg, buf);
+        fprintf(log_fp, "%s[%s] [%s] %s"NONE"\n", color, t_buf, msg, buf);
     }
     if(loglevel > ERROR) {
         exit(1);

@@ -13,236 +13,140 @@
  *   GNU General Public License for more details.
  *
  **/
-
-#include <poll.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
 #include <pthread.h>
-#include <inttypes.h>
+#include <string.h>
+#include <errno.h>
+#include <poll.h>
 #include <sys/socket.h>
-
-#include <lua.h>
-#include <pcap/pcap.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 
-#include "server.h"
 #include "tcpkit.h"
+#include "server.h"
 #include "sniffer.h"
-#include "array.h"
+#include "dumper.h"
+#include "log.h"
 #include "stats.h"
-#include "util.h"
-#include "logger.h"
+#include "cJSON.h"
+#include "hashtable.h"
 
-static int server_runing_in_client(struct array *local_addrs, struct in_addr *addr) {
-    int i;
-    struct in_addr *local_addr;
-    for (i = 0; i < array_used(local_addrs); i++) {
-        local_addr = (struct in_addr*)array_pos(local_addrs, i);
-        if (local_addr->s_addr == addr->s_addr) return 0;
+static int server_spwan_dumper_thread(struct server *srv);
+static void *server_stats_loop(void *arg);
+static int server_spwan_stats_thread(struct server *srv);
+
+struct server *server_create(struct options *opts, char *err) {
+    struct server *srv;
+    struct sniffer *sniffer;
+    struct dumper *d;
+
+    srv = malloc(sizeof(*srv));
+    srv->opts = opts;
+    srv->dumper = NULL;
+    srv->dumper_tid = 0;
+    srv->stats_tid = 0;
+    srv->stopped = 0;
+    sniffer = sniffer_create(opts, err);
+    if (!sniffer) return NULL;
+    srv->sniffer = sniffer;
+
+    if (!opts->offline_file && opts->save_file) {
+        if (!(d = dumper_create(opts, err))) {
+            sniffer_destroy(sniffer);
+            return NULL;
+        }
+        srv->dumper = d;
+        if (server_spwan_dumper_thread(srv) != 0) {
+            log_message(ERROR, "Create dumper thread encounter err: %s", strerror(errno));
+            sniffer_destroy(sniffer);
+            dumper_destroy(d);
+            return NULL;
+        }
     }
-    return 1;
+    if (opts->protocol != ProtocolRaw) {
+        if (server_spwan_stats_thread(srv) != 0) {
+            log_message(ERROR, "Create stats thread encounter err: %s", strerror(errno));
+            sniffer_destroy(sniffer);
+            dumper_destroy(d);
+            return NULL;
+        }
+    }
+    return srv;
 }
 
-int server_init(server *srv) {
-    int i, n_server;
-    char *server_str;
-    struct array *local_addresses;
+int server_run(struct server *srv, char *err) {
+    struct pcap_stat stat;
 
-    srv->stop = 0;
-    srv->req_ht = hashtable_create(102400);
-    if (!srv->req_ht) return -1;
-    srv->st = stats_create(array_used(srv->opts->ports));
-    if (!srv->st) return -1;
-    srv->is_server_mode = 1;
-    srv->stats_tid = 0;
-    srv->n_server = 0;
-    srv->servers = NULL;
-    n_server = array_used(srv->opts->servers);
-   local_addresses = get_addresses_from_device();
-    if (n_server > 0) {
-        srv->n_server = n_server;
-        srv->servers = malloc(n_server * sizeof(struct in_addr));
-        for (i = 0; i < n_server; i++) {
-            server_str = *(char **)array_pos(srv->opts->servers, i);
-            inet_pton(AF_INET, server_str, &srv->servers[i]);
-            if (server_runing_in_client(local_addresses, &srv->servers[i])) {
-                srv->is_server_mode = 0;
-            }
-        }
-    } else {
-        if (local_addresses) {
-            srv->n_server = array_used(local_addresses);
-            srv->servers = malloc(srv->n_server * sizeof(struct in_addr));
-            for (i = 0; i < srv->n_server; i++) {
-                memcpy(&srv->servers[i], (struct in_addr*)array_pos(local_addresses, i),
-                        sizeof(struct in_addr));
-            }
-            array_dealloc(local_addresses);
-        }
+    if (sniffer_run(srv->sniffer) == -1) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "%s", pcap_geterr(srv->sniffer->pcap));
+        return -1;
     }
+    if (srv->dumper_tid) pthread_join(srv->dumper_tid, NULL);
+    if (srv->stats_tid) pthread_join(srv->stats_tid, NULL);
+    pcap_stats(srv->sniffer->pcap, &stat);
+    printf("\n======================== interface stats ========================\n");
+    printf("%u packets received by filter\n", stat.ps_recv);
+    printf("%u packets dropped by kernel\n", stat.ps_drop);
+    printf("%u packets dropped by interface\n", stat.ps_ifdrop);
+    printf("======================== interface stats ========================\n");
+
     return 0;
 }
 
-void server_deinit(server *srv) {
-    srv->stop = 1;
+void server_terminate(struct server *srv) {
+    srv->stopped = 1;
     sniffer_terminate(srv->sniffer);
-    if (srv->stats_tid > 0) pthread_join(srv->stats_tid, NULL);
-    if (srv->sniffer) pcap_close(srv->sniffer);
-    if (srv->vm) lua_close(srv->vm);
-    // wait for stats thread
-    if (srv->filter) free(srv->filter);
-    if (srv->st) stats_destroy(srv->st);
-    if (srv->req_ht) hashtable_destroy(srv->req_ht);
-    if (srv->servers) free(srv->servers);
-
-    options *opts = srv->opts;
-    if (opts) {
-        if (opts->script) free(opts->script);
-        if (opts->save_file) free(opts->save_file);
-        if (opts->ports) array_dealloc(opts->ports);
-        if (opts->servers) free_split_string(opts->servers);
-        if (opts->offline_file) free(opts->offline_file);
-        if (opts->logfile) free(opts->logfile);
-        if (opts->device) free(opts->device);
-        free(opts);
-    }
+    if (srv->dumper) dumper_terminate(srv->dumper);
 }
 
-static void server_print_latency_stats(server *srv) {
-    int i, j;
-    int64_t average_latency;
-
-    rlog("========================= latency stats =========================");
-    for (i = 0; i < array_used(srv->opts->ports); i++) {
-        if (srv->st->latencies[i].total_reqs == 0) continue;
-        average_latency = srv->st->latencies[i].total_costs / srv->st->latencies[i].total_reqs;
-        rlog("tcp port: %d, total requests: %" PRId64 ", average latency: %.3f ms, slow threshod: %d ms, slow requests: %" PRId64,
-             *(int *) array_pos(srv->opts->ports, i),
-             srv->st->latencies[i].total_reqs,
-             average_latency/1000.0,
-             srv->opts->threshold_ms,
-             srv->st->latencies[i].slow_counts
-        );
-
-        for (j = 0; j < N_BUCKET; j++) {
-            if (srv->st->latencies[i].buckets[j] == 0) continue;
-            if (j >= 1) {
-                rlog("%s~%s: %lld", latency_buckets_name[j-1], latency_buckets_name[j],
-                     srv->st->latencies[i].buckets[j]);
-            } else {
-                rlog("0ms~%s: %lld", latency_buckets_name[j], srv->st->latencies[i].buckets[j]);
-            }
-        }
-    }
+void server_destroy(struct server *srv) {
+    sniffer_destroy(srv->sniffer);
+    if (srv->dumper) dumper_destroy(srv->dumper);
+    free(srv);
 }
 
-void server_print_stats(server *srv) {
-    struct pcap_stat stat;
-
-    if (srv->opts->mode != P_RAW) {
-        server_print_latency_stats(srv);
-    }
-    pcap_stats(srv->sniffer, &stat);
-    rlog("======================== interface stats ========================");
-    rlog("%lld packets captured", srv->st->req_packets + srv->st->rsp_packets);
-    rlog("%u packets received by filter", stat.ps_recv);
-    rlog("%u packets dropped by kernel", stat.ps_drop);
-    rlog("%u packets dropped by interface", stat.ps_ifdrop);
-    rlog("=================================================================");
-}
-
-char *server_stats_to_json(server *svr) {
-    int i, j, size, n = 0;
-    char *buf, *type;
-    struct pcap_stat pcap_stat;
-
-    switch(svr->opts->mode) {
-        case P_REDIS: type = "redis"; break;
-        case P_MEMCACHED: type = "memcached"; break;
-        case P_HTTP: type = "http"; break;
-        default: type = "raw"; break;
-    }
-
-    pcap_stats(svr->sniffer, &pcap_stat);
-    stats *st = svr->st;
-    // latencies
-    size = (N_BUCKET* 20 + 2 * 20 + 128) * st->n_latency+256;
-    buf = malloc(size);
-    n += snprintf(buf, size,
-                  "{\"type\":\"%s\","
-                  "\"drops\":%u,"
-                  "\"in_packets\":%" PRId64 ","
-                  "\"out_packets\":%" PRId64 ","
-                  "\"in_bytes\":%" PRId64 ","
-                  "\"out_bytes\":%" PRId64 ","
-                  " \"ports\":",
-                  type,
-                  pcap_stat.ps_drop,
-                  st->req_packets,
-                  st->rsp_packets,
-                  st->req_bytes,
-                  st->rsp_bytes);
-    buf[n++] = '[';
-    for (i = 0; i < st->n_latency; i++) {
-        n += snprintf(buf+n, size-n,
-                      "{\"%d\":{\"total_reqs\": %" PRId64 ",\"total_costs\":%" PRId64 ", \"slow_reqs\":%" PRId64 ",\"latencies\":[",
-                      *(int*)array_pos(svr->opts->ports, i),
-                      st->latencies[i].total_reqs,
-                      st->latencies[i].total_costs,
-                      st->latencies[i].slow_counts);
-        for (j = 0; j < N_BUCKET; j++) {
-            n += snprintf(buf+n, size-n, "%" PRId64 ",", st->latencies[i].buckets[j]);
-        }
-        buf[n-1] = ']';
-        buf[n++] = '}';
-        buf[n++] = '}';
-        buf[n++] = ',';
-    }
-    buf[n-1] = ']';
-    buf[n] = '}';
-    buf[n+1] = '\0';
-    return buf;
-}
-
-static void *server_stats_loop(void *arg) {
-    int rc, listen_fd, new_fd;
-    server *srv;
-    char *stats_buf;
-    struct pollfd fds[1];
-
-    srv = (server*)arg;
-    listen_fd  = server_listen(srv->opts->stats_port);
-    fds[0].fd = listen_fd;
-    fds[0].events = POLLIN;
-    while(!srv->stop) {
-        rc = poll(fds, 1, 100);
-        if (rc <= 0) continue;
-        new_fd = accept(listen_fd, NULL, NULL);
-        if (new_fd < 0) {
-           // log error
-            continue;
-        }
-        stats_buf = server_stats_to_json(srv);
-        write(new_fd, stats_buf, strlen(stats_buf));
-        close(new_fd);
-        free(stats_buf);
+static void* server_dump_loop(void *arg) {
+    struct dumper *d;
+    char err[MAX_ERR_BUFF_SIZE];
+    
+    d = (struct dumper *) arg;
+    if (dumper_run(d) == -1) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "%s", pcap_geterr(d->pcap));
     }
     return NULL;
 }
 
-void server_create_stats_thread(server *srv) {
-    pthread_create(&srv->stats_tid, NULL, server_stats_loop, srv);
+static int server_spwan_dumper_thread(struct server *srv) {
+    int ret;
+    pthread_t tid;
+
+    ret = pthread_create(&tid, NULL, server_dump_loop, srv->dumper);
+    if (ret != 0) {
+        return ret;
+    }
+    srv->dumper_tid = tid;
+    return 0; 
 }
 
-int server_listen(int port) {
+static int server_spwan_stats_thread(struct server *srv) {
+    int ret;
+    pthread_t tid;
+
+    ret = pthread_create(&tid, NULL, server_stats_loop, srv);
+    if (ret != 0) {
+        return ret;
+    }
+    srv->stats_tid = tid;
+    return 0;
+}
+
+static int server_listen(int port) {
     int listen_fd, rc;
     struct sockaddr_in sin;
 
     listen_fd = socket(PF_INET, SOCK_STREAM, 0);
     if (listen_fd == -1)  {
+        log_message(FATAL, "Failed to setup the stats listener, err: %s", strerror(errno));
         return -1;
     }
     memset(&sin, 0, sizeof(sin));
@@ -251,13 +155,57 @@ int server_listen(int port) {
     sin.sin_port = htons(port);
     rc = bind(listen_fd, (struct sockaddr *)&sin, sizeof(sin));
     if (rc < 0) {
-        alog(FATAL, "Failed to bind stats port, err: %s", strerror(errno));
+        log_message(FATAL, "Failed to bind stats port(%d), err: %s", port, strerror(errno));
         return -1;
     }
     rc = listen(listen_fd, 511);
     if (rc < 0) {
-        alog(FATAL, "Failed to listen, err: %s", strerror(errno));
         return -1;
     }
     return listen_fd;
+}
+
+static char *server_stats_to_json(struct server *srv) {
+    cJSON *object;
+    void **values;
+    int i, cnt = 0;
+    struct query_stats *stats;
+    char buf[64], *stats_json_str;
+
+    object = cJSON_CreateObject();
+    values = hashtable_values(srv->sniffer->syn_tab, &cnt);
+    for (i = 0; i < cnt; i++) {
+        stats = (struct query_stats *)values[i];        
+        if (!stats) continue;
+        snprintf(buf, 64, "%s:%d", inet_ntoa(stats->ip), stats->port);
+        cJSON_AddItemToObject(object, buf, create_stats_object(stats));
+    }
+    stats_json_str = cJSON_Print(object);
+    cJSON_Delete(object);
+    free(values);
+    return stats_json_str;
+}
+
+static void *server_stats_loop(void *arg) {
+    int rc, listen_fd, new_fd;
+    struct server *srv;
+    char *stats_buf;
+    struct pollfd fds[1];
+
+    srv = (struct server*)arg;
+    listen_fd = server_listen(srv->opts->stats_port);
+    fds[0].fd = listen_fd;
+    fds[0].events = POLLIN;
+    while(!srv->stopped) {
+        rc = poll(fds, 1, 100);
+        if (rc <= 0) continue;
+        new_fd = accept(listen_fd, NULL, NULL);
+        if (new_fd < 0) continue;
+        stats_buf = server_stats_to_json(srv);
+        write(new_fd, stats_buf, strlen(stats_buf));
+        close(new_fd);
+        free(stats_buf);
+    }
+    close(listen_fd);
+    return NULL;
 }

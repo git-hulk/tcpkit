@@ -1,3 +1,4 @@
+  
 /**
  *   tcpkit --  toolkit to analyze tcp packet
  *   Copyright (C) 2018  @git-hulk
@@ -75,16 +76,17 @@ hashtable *hashtable_create(int nbucket) {
 
 void hashtable_destroy(hashtable *ht) {
    int i;
+   entry *current, *entry;
+
    if (!ht) return;
-   entry *current,*next;
    for (i = 0; i < ht->nbucket; i++) {
        current = ht->buckets[i];
        while (current) {
-           next = current->next;
-           free(current->key);
-           ht->free ? ht->free(current->value) : free(current->value);
-           free(current);
-           current = next;
+           entry = current;
+           current = current->next;
+           free(entry->key);
+           ht->free ? ht->free(entry->value) : free(entry->value);
+           free(entry);
        }
    }
    free(ht->buckets);
@@ -92,16 +94,14 @@ void hashtable_destroy(hashtable *ht) {
 }
 
 void *hashtable_add(hashtable *ht, char *key, void *value) {
-    int bucket, key_size, current_key_size;
+    int bucket, key_size;
     entry *current;
 
     key_size = strlen(key);
     bucket = hash_function(key, strlen(key)) % ht->nbucket;
     current = ht->buckets[bucket];
     while (current) {
-        current_key_size = strlen(current->key);
-        if (key_size == current_key_size
-            && !strncmp(key, current->key, key_size)){
+       if (key_size == strlen(current->key) && !strncmp(key, current->key, key_size)) {
             return current->value;
         }
         current = current->next;
@@ -115,16 +115,14 @@ void *hashtable_add(hashtable *ht, char *key, void *value) {
 }
 
 void *hashtable_get(hashtable *ht, char *key) {
-    int bucket, key_size, current_key_size;
+    int bucket, key_size;
     entry *current;
 
     key_size = strlen(key);
     bucket = hash_function(key, key_size) % ht->nbucket;
     current = ht->buckets[bucket];
     while(current) {
-        current_key_size = strlen(current->key);
-        if (current_key_size == key_size
-            && !strncmp(key, current->key, key_size)) {
+        if (strlen(current->key) == key_size && !strncmp(key, current->key, key_size)) {
             return current->value;
         }
         current = current->next;
@@ -133,16 +131,13 @@ void *hashtable_get(hashtable *ht, char *key) {
 }
 
 int hashtable_del(hashtable *ht, char *key) {
-    int bucket, key_size=strlen(key), current_key_size;
+    int bucket, key_size = strlen(key);
     entry *current, *prev;
 
     bucket = hash_function(key, key_size) % ht->nbucket;
-    prev = current = ht->buckets[bucket];
-
+    current = ht->buckets[bucket];
     while (current) {
-        current_key_size = strlen(current->key);
-        if (key_size == current_key_size
-            && !strncmp(key, current->key, key_size)) {
+        if (key_size == strlen(current->key) && !strncmp(key, current->key, key_size)) {
             if (current == ht->buckets[bucket]) {
                 ht->buckets[bucket] = current->next;
             } else {
@@ -157,4 +152,28 @@ int hashtable_del(hashtable *ht, char *key) {
         current = current->next;
     }
     return 0;
+}
+
+void **hashtable_values(hashtable *ht, int *cnt) {
+    int i, cap = 0;
+    entry *e;
+    void **values = NULL;
+    
+    *cnt = 0;
+    for (i = 0; i < ht->nbucket; i++) {
+        e = ht->buckets[i];       
+        while(e) {
+            if (!values) {
+                values = malloc(sizeof(void *));
+                cap = 1;
+            } else if (*cnt == cap) {
+                cap *= 2;
+                values = realloc(values, sizeof(void *) * cap);
+            }
+            values[*cnt] = e->value;
+            *cnt += 1;
+            e = e->next;
+        }
+    }
+    return values;
 }

@@ -1,27 +1,7 @@
 # tcpkit
 
-A tool to capture tcp packets and analyze the packets with LUA. 
-
-## Usage
-
-```
-TCPKIT is a tool to capture tcp packets and analyze the packets with lua.
-	-s which server ip to monitor, must specify when runing in client side. e.g. 192.168.1.2,192.168.1.3 
-	-p which n_latency to monitor, e.g. 6379,6380
-	-P stats listen port, default is 33333
-	-i network card interface, e.g. bond0, lo, em0... see 'ifconfig'
-	-d daemonize, run process in background
-	-r set offline file captured by tcpdump or tcpkit
-	-t request latency threshold, unit is millisecond
-	-m protocol mode, raw,redis,memcached,http
-	-w dump packets to 'savefile'
-	-S lua script path, default is ../scripts/example.lua
-	-B operating system capture buffer size, in units of KiB (1024 bytes)
-	-o log output file
-	-u udp
-	-v version
-	-h help
-```
+The tcpkit was designed to analyze network packets with lua script, can also be used to observe the request latency
+of the service with simple protocol, like `redis`/`memcached`.
 
 ## Install
 
@@ -31,54 +11,63 @@ $ cd tcpkit
 $ sudo make && make install
 ```
 
-## Monitor latency
+## Usage
 
-Supports Redis/Memcached/Http protocol now, we take Redis as example here: 
+```shell
+the tcpkit was designed to make network packets programable with LUA by @git-hulk
+   -h, Print the tcpkit version strings, print a usage message, and exit
+   -i interface, Listen on network card interface
+   -r file, Read packets from file (which was created with the -w option or by other tools that write pcap)
+   -A Print each packet (minus its link level header) in ASCII.  Handy for capturing web pages
+   -B buffer_size, Set the operating system capture buffer size to buffer_size, in units of KiB (1024 bytes)
+   -s snaplen, Snarf snaplen bytes of data from each packet rather than the default of 1500 bytes
+   -S file, Push packets to lua state if the script was specified
+   -t threshold, Print the request lantecy which slower than the threshold, in units of Millisecond
+   -p protocol, Parse the packet if the protocol was specified (supports: redis, memcached, http, raw)
+   -P stats port, Listen port to fetch the latency stats, default is 33333
 
-```
-$ sudo tcpkit -i em1 -s 192.168.1.2 -p 6379,6380,6381 -t 10 -m redis
-```
 
-and the request latency more than 10ms would be printed, like below:
+For example:
 
-```
-2018-11-16 18:38:36.873067 172.20.64.106:53499 => 192.168.1.2:6379 | 11 ms | set foo bar
-2018-11-16 18:38:55.051167 172.20.64.106:53499 => 192.168.1.2:6379 | 14 ms | get foo
-```
+   `tcpkit -i eth0 tcp port 6379 -p redis` was used to monitor the redis reqeust latency
 
-Tcpkit would print all requests if the `-t` option wasn't set.
-If tcpkit was deployed client-side, use the `-s` option to specify the server host/ip.
-> Caution: `-s` option should be specified when tcpkit is running in client side or decode packets from offline pcap.
+   `tcpkit -i eth0 tcp port 6379 -p redis -w 6379.pcap` would also dump the packets to `6379.pcap`
 
-## Use lua to analyze packets
-
-If the protocol wasn't supported by tcpkit or to inspect the tcp stream data, we can use raw mode. 
-The tcp packet would be passed to `lua VM`, and we can analyze the packet with lua script. e.g.
-
-```
-$ sudo tcpkit -i em1 -p 6379 -m raw -S ../scripts/example.lua 
+   `tcpkit -i eth0 tcp port 6379 -p redis -t 10` would only print the request latency slower than 10ms
 ```
 
-## Scripts
+## How To Observe The Latency Of Redis/Memcached 
+
+
+```shell
+$ tcpkit -i eth0 tcp port 6379 -p redis
+```  
+
+tcpkit would listen on NIC `eth0` and caputure the tcp port `6379`, then parse network packets with Redis protocol. 
+The output was like below:
+
+```
+2020-03-08 19:23:06.253384 127.0.0.1:51137 => 127.0.0.1:6379 | 0.615 ms | COMMAND
+2020-03-08 19:23:06.258761 127.0.0.1:51137 => 127.0.0.1:6379 | 0.059 ms | get a
+```
+
+Use the option `-t` would only show the request which the request latency was slower than threshold(in units of millisecond).
+
+
+## How to Use Lua Script
+
+```
+$ tcpkit -i eth0 tcp port 6379 -p redis -S scripts/example.lua
+```
+
+the callback function `function process(packet)` in `scripts/example.lua` would be triggered if new packets reached.
+
+## Predefine Scripts
 
 1. [exmaple.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/example.lua) - example for user defined script
 2. [dns.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/dns.lua) - print the dns latency
 3. [tcp-connnect.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/tcp-connect.lua) - print connection with syn packet retransmit
 
-## Fetch Stats Online
+## License
 
-Tcpkit also exports latency stats to the user by tcp port (default is 33333), use the `-P` option to change it.
-The output is a json string, like below: 
-
-```
-[{"6379":{"total_reqs": 7,"total_costs":76785, "slow_reqs":7,"latencies":[0,0,0,0,0,3,3,1,0,0,0,0,0,0,0,0,0,0]}},
-{"6380":{"total_reqs": 0,"total_costs":0, "slow_reqs":0,"latencies":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}]
-```
-
-This means that the port `6379` received `7` total requests, and that total costs is `76785` us, with `7` slow requests (slow threshold is `5ms`):
-`5ms-10ms`: 3 requests
-`10ms-20ms`: 3 requests
-`20ms-50ms`: 1 request
-
-The `latencies` arrays above correspond to the following latency buckets:
-`0.1ms`, `0.2ms`, `0.5ms`, `1ms`, `5ms`, `10ms`, `20ms`, `50ms`, `100ms`, `200ms`, `500ms`, `1s`, `2s`, `3s`, `5s`, `10s`, `20s`, `>20s` 
+tcpkit is under the MIT license. See the LICENSE file for details.

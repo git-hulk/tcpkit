@@ -14,12 +14,29 @@
  *
  **/
 
-#ifndef TCPKIT_REDIS_H
-#define TCPKIT_REDIS_H
-typedef struct {
-    struct timeval tv;
-    char buf[256];
-}request;
+#ifndef TCPKIT_LOG_H
+#define TCPKIT_LOG_H
 
-request *parse_redis_request(char *payload, int size);
-#endif //TCPKIT_REDIS_H
+#include <stdio.h>
+#include <stdlib.h>
+
+#define RED "\033[31m"
+#define GREEN "\033[32m"
+#define YELLOW "\033[33m"
+#define PURPLE "\033[35m"
+#define NONE "\033[0m"
+
+enum LEVEL {
+    DEBUG = 1,
+    INFO,
+    WARN,
+    ERROR,
+    FATAL
+};
+
+void raw_printf(char *fmt, ...); 
+void color_printf(const char *color, char *fmt, ...); 
+void print_redirect(FILE *fp);
+void log_message(enum LEVEL loglevel, char *fmt, ...); 
+
+#endif

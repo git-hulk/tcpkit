@@ -16,12 +16,21 @@
 
 #ifndef TCPKIT_SERVER_H
 #define TCPKIT_SERVER_H
+
+#include <pthread.h>
 #include "tcpkit.h"
 
-int server_init(server *srv);
-void server_deinit(server *srv);
-int server_listen(int port);
-void server_print_stats(server *srv);
-char *server_stats_to_json(server *svr);
-void server_create_stats_thread(server *srv);
-#endif //TCPKIT_SERVER_H
+struct server {
+    struct options *opts;
+    struct sniffer *sniffer;
+    struct dumper* dumper;
+    pthread_t dumper_tid;
+    pthread_t stats_tid;
+    int stopped;
+};
+
+struct server *server_create(struct options *opts, char *err); 
+int server_run(struct server *srv, char *err);
+void server_terminate(struct server *srv); 
+void server_destroy(struct server *srv);
+#endif

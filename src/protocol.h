@@ -14,12 +14,12 @@
  *
  **/
 
-#ifndef TCPKIT_UTIL_H
-#define TCPKIT_UTIL_H
+#ifndef TCPKIT_PRTOCOL_H
+#define TCPKIT_PRTOCOL_H
 
-#include "array.h"
+char *format_redis(const char *payload, int size);
+char *format_memcached(const char *payload, int size);
+char *format_http(const char *payload, int size);
+char *format_raw(const char *payload, int size);
 
-struct array *split_string(char *input, char delim);
-void free_split_string(struct array *arr);
-struct array *get_addresses_from_device();
-#endif //TCPKIT_UTIL_H
+#endif
