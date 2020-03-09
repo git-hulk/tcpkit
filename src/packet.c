@@ -13,6 +13,7 @@
  *   GNU General Public License for more details.
  *
  **/
+#include <time.h>
 #include <stdlib.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
