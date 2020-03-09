@@ -81,25 +81,31 @@ int server_run(struct server *srv, char *err) {
     struct pcap_stat stat;
 
     if (sniffer_run(srv->sniffer) == -1) {
+        server_terminate(srv);
         snprintf(err, MAX_ERR_BUFF_SIZE, "%s", pcap_geterr(srv->sniffer->pcap));
         return -1;
     }
+    server_terminate(srv);
     if (srv->dumper_tid) pthread_join(srv->dumper_tid, NULL);
     if (srv->stats_tid) pthread_join(srv->stats_tid, NULL);
-    pcap_stats(srv->sniffer->pcap, &stat);
-    printf("\n======================== interface stats ========================\n");
-    printf("%u packets received by filter\n", stat.ps_recv);
-    printf("%u packets dropped by kernel\n", stat.ps_drop);
-    printf("%u packets dropped by interface\n", stat.ps_ifdrop);
-    printf("======================== interface stats ========================\n");
+    if (!srv->opts->offline_file) {
+        pcap_stats(srv->sniffer->pcap, &stat);
+        printf("\n======================== interface stats ========================\n");
+        printf("%u packets received by filter\n", stat.ps_recv);
+        printf("%u packets dropped by kernel\n", stat.ps_drop);
+        printf("%u packets dropped by interface\n", stat.ps_ifdrop);
+        printf("======================== interface stats ========================\n");
+    }
 
     return 0;
 }
 
 void server_terminate(struct server *srv) {
-    srv->stopped = 1;
-    sniffer_terminate(srv->sniffer);
-    if (srv->dumper) dumper_terminate(srv->dumper);
+    if (!srv->stopped) {
+        srv->stopped = 1;
+        sniffer_terminate(srv->sniffer);
+        if (srv->dumper) dumper_terminate(srv->dumper);
+    }
 }
 
 void server_destroy(struct server *srv) {
