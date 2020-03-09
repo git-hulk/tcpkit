@@ -1,4 +1,4 @@
-# tcpkit
+# tcpkit [![Build Status](https://travis-ci.com/git-hulk/tcpkit.svg?branch=master)](https://travis-ci.com/git-hulk/tcpkit)
 
 The tcpkit was designed to analyze network packets with lua script, can also be used to observe the request latency
 of the service with simple protocol, like `redis`/`memcached`.
