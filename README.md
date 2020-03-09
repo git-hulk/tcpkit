@@ -63,11 +63,42 @@ $ tcpkit -i eth0 tcp port 6379 -p redis -S scripts/example.lua
 
 the callback function `function process(packet)` in `scripts/example.lua` would be triggered if new packets reached.
 
-## Predefine Scripts
+### Predefine Scripts
 
 1. [exmaple.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/example.lua) - example for user defined script
 2. [dns.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/dns.lua) - print the dns latency
 3. [tcp-connnect.lua](https://github.com/git-hulk/tcpkit/blob/master/scripts/tcp-connect.lua) - print connection with syn packet retransmit
+
+## Request Latency
+
+the stats port listen on `33333` by default, use the `-P` to change the listen port.
+
+```json
+➜  ~ telnet 127.0.0.1 33333
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+
+{
+	"127.0.0.1:6379":	{
+		"requests":	1700,
+		"request_bytes":	184100,
+		"responses":	1700,
+		"response_bytes":	1413764,
+		"latency":	[{
+				"<0.1ms":	326
+			}, {
+				"0.1ms~0.2ms":	371
+			}, {
+				"0.2~0.5ms":	589
+			}, {
+				"0.5ms~1ms":	291
+			}, {
+				"1ms~5ms":	123
+			}]
+	}
+}
+```
 
 ## License
 
