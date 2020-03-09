@@ -41,6 +41,7 @@ void usage() {
         "   -s snaplen, Snarf snaplen bytes of data from each packet rather than the default of 1500 bytes\n" 
         "   -S file, Push packets to lua state if the script was specified\n"
         "   -t threshold, Print the request lantecy which slower than the threshold, in units of Millisecond\n"
+        "   -w file, Write the raw packets to file\n" 
         "   -p protocol, Parse the packet if the protocol was specified (supports: redis, memcached, http, raw)\n"
         "   -P stats port, Listen port to fetch the latency stats, default is 33333\n\n\n"
         ""

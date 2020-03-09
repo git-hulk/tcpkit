@@ -23,6 +23,7 @@ the tcpkit was designed to make network packets programable with LUA by @git-hul
    -s snaplen, Snarf snaplen bytes of data from each packet rather than the default of 1500 bytes
    -S file, Push packets to lua state if the script was specified
    -t threshold, Print the request lantecy which slower than the threshold, in units of Millisecond
+   -w file, Write the raw packets to file
    -p protocol, Parse the packet if the protocol was specified (supports: redis, memcached, http, raw)
    -P stats port, Listen port to fetch the latency stats, default is 33333
 
