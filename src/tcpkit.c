@@ -64,6 +64,7 @@ void init_options(struct options *opts) {
     opts->print_usage = 0;
     opts->print_version = 0;
     opts->protocol = ProtocolRaw;
+    opts->threshold = 0;
     opts->stats_port = 33333;
 }
 
