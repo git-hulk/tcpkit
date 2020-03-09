@@ -7,7 +7,7 @@ function process(packet)
         return -- // skip the packet with payload
     end
 
-    if packet.request and packet.flags == 2 then
+    if packet.flags == 2 then
         -- syn packet
         local key = packet.sip..":"..packet.sport.." => "..packet.dip..":"..packet.dport
         if not syn_table[key] then
@@ -22,12 +22,11 @@ function process(packet)
         end
         return
     end
-    if (not packet.request and packet.flags == 18) -- syn + ack
-       or (bit32.band(packet.flags, 4) ~= 0) then -- rst
+
+    if packet.flags == 18 or (bit32.band(packet.flags, 4) ~= 0) then
         local key = packet.dip..":"..packet.dport.." => "..packet.sip..":"..packet.sport
             local first_syn_packet = syn_table[key]
-            -- only print the connection with retransmit syn packet
-            if first_syn_packet and first_syn_packet.count > 0 then
+            if first_syn_packet and first_syn_packet.count >= 0 then
             local time_str = os.date('%Y-%m-%d %H:%M:%S', packet.tv_sec).."."..packet.tv_usec
             if packet.tv_usec < first_syn_packet.tv_usec then
                 packet.tv_sec = packet.tv_sec - 1
@@ -42,6 +41,5 @@ function process(packet)
             ))
         end
         syn_table[key] = nil
-        return
     end
 end
