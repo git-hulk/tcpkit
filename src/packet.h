@@ -33,10 +33,12 @@ struct user_packet {
     struct in_addr ip_dst;
     uint16_t port_src;
     uint16_t port_dst;
+    uint16_t window;
     unsigned int seq;
     unsigned int ack;
     bpf_u_int32 size;
     int payload_size;
+    int hdr_size;
     const char *payload;
 };
 

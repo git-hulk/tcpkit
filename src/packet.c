@@ -52,12 +52,13 @@ void process_tcp_packet(struct sniffer *sniffer,
     packet->ip_src = ip_packet->ip_src;
     packet->ip_dst = ip_packet->ip_dst;
     tcphdr = (struct tcphdr *)((unsigned char *)ip_packet + iphdr_size);
-    #if defined(__FAVOR_BSD) || defined(__APPLE__)
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
     packet->seq = htonl(tcphdr->th_seq);
     packet->ack = htonl(tcphdr->th_ack);
     packet->flags = tcphdr->th_flags;
     packet->port_src = ntohs(tcphdr->th_sport);
     packet->port_dst = ntohs(tcphdr->th_dport);
+    packet->window = ntohs(tcphdr->th_win);
     tcphdr_size = tcphdr->th_off * 4;
 #else
     packet->seq = htonl(tcphdr->seq);
@@ -66,6 +67,7 @@ void process_tcp_packet(struct sniffer *sniffer,
     if (tcphdr->ack) packet->flags |= 0x10;
     packet->port_src = ntohs(tcphdr->source);
     packet->port_dst = ntohs(tcphdr->dest);
+    packet->window = ntohs(tcphdr->window);
     tcphdr_size = tcphdr->doff * 4;
 #endif
     packet->payload = (char *)tcphdr + tcphdr_size;
@@ -75,6 +77,7 @@ void process_tcp_packet(struct sniffer *sniffer,
     } else {
         packet->payload_size = 0; 
     }
+    packet->hdr_size = framehdr_size+iphdr_size+tcphdr_size;
     packet->is_tcp = 1;
 }
 
@@ -105,6 +108,7 @@ void process_udp_packet(struct sniffer *sniffer,
     packet->payload_size = udp_len > payload_size ? payload_size : udp_len;
     packet->payload = (char *)udphdr + sizeof(struct udphdr);
     packet->is_tcp = 0;
+    packet->hdr_size = framehdr_size+iphdr_size;
 }
 
 static int packet_direction(struct sniffer *sniffer, struct user_packet *upacket) {
@@ -137,6 +141,7 @@ static void push_packet_to_lua_state(lua_State *state, struct user_packet *upack
         lua_table_push_int(state, "seq", upacket->seq);
         lua_table_push_int(state, "ack", upacket->ack);
         lua_table_push_int(state, "flags", upacket->flags);
+        lua_table_push_int(state, "window", upacket->window);
     }
     lua_table_push_cstring(state, "payload", upacket->payload, upacket->payload_size);
     lua_table_push_int(state, "size", upacket->payload_size);
@@ -213,6 +218,37 @@ static void process_response_packet(struct sniffer *sniffer, struct user_packet 
 }
 
 void print_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
+    int n = 0, length;
+    char buf[512], t_buf[32];
+
+    length = upacket->size - upacket->hdr_size;
+    strftime(t_buf, sizeof(t_buf)-n-1, "%H:%M:%S",localtime(&upacket->tv.tv_sec));
+    n += snprintf(buf+n, sizeof(buf)-n-1, "%s",  t_buf);
+    n += snprintf(buf+n, sizeof(buf)-n-1, ".%06d", upacket->tv.tv_usec);
+    n += snprintf(buf+n, sizeof(buf)-n-1, " IP %s.%d", inet_ntoa(upacket->ip_src), upacket->port_src);
+    n += snprintf(buf+n, sizeof(buf)-n-1, " > %s.%d:", inet_ntoa(upacket->ip_src), upacket->port_src);
+    if (upacket->is_tcp) {
+        n += snprintf(buf+n, sizeof(buf)-n-1, " Flags [");
+        if (upacket->flags & 0x01) n += snprintf(buf+n, sizeof(buf)-n-1, "F");
+        if (upacket->flags & 0x02) n += snprintf(buf+n, sizeof(buf)-n-1, "S");
+        if (upacket->flags & 0x04) n += snprintf(buf+n, sizeof(buf)-n-1, "R");
+        if (upacket->flags & 0x08) n += snprintf(buf+n, sizeof(buf)-n-1, "P");
+        if (upacket->flags & 0x10) n += snprintf(buf+n, sizeof(buf)-n-1, ".");
+        n += snprintf(buf+n, sizeof(buf)-n-1, "],");
+        if (length > 0) {
+            n += snprintf(buf+n, sizeof(buf)-n-1, " seq %u:%u,", upacket->seq, upacket->seq+length);
+        }
+        if (upacket->flags & 0x10) {
+            n += snprintf(buf+n, sizeof(buf)-n-1, " ack %u,", upacket->ack);
+        }
+        n += snprintf(buf+n, sizeof(buf)-n-1, " window %d,", upacket->window);
+    }
+    n += snprintf(buf+n, sizeof(buf)-n-1, " length %d", length);
+    if (!sniffer->ascii) {
+        printf("%s\n", buf);
+    } else {
+        printf("%s %.*s\n", buf, upacket->payload_size, upacket->payload);
+    }
 }
 
 void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {

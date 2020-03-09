@@ -70,6 +70,7 @@ struct sniffer *sniffer_create(struct options *opts, char *err) {
     sniffer = malloc(sizeof(*sniffer));
     sniffer->protocol = opts->protocol;
     sniffer->threshold = opts->threshold;
+    sniffer->ascii = opts->ascii;
     sniffer->dev = strdup(opts->dev);
     sniffer->filter = strdup(opts->filter);
     sniffer->syn_tab = hashtable_create(16);

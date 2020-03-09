@@ -36,6 +36,7 @@ void usage() {
         "the tcpkit was designed to make network packets programable with LUA by @git-hulk\n"
         "   -h, Print the tcpkit version strings, print a usage message, and exit\n"
         "   -i interface, Listen on network card interface\n"
+        "   -A Print each packet (minus its link level header) in ASCII.  Handy for capturing web pages.\n"
         "   -r file, Read packets from file (which was created with the -w option or by other tools that write pcap)\n"
         "   -B buffer_size, Set the operating system capture buffer size to buffer_size, in units of KiB (1024 bytes)\n"
         "   -s snaplen, Snarf snaplen bytes of data from each packet rather than the default of 1500 bytes\n" 
@@ -55,6 +56,7 @@ void usage() {
 
 void init_options(struct options *opts) {
     opts->dev = strdup("any");
+    opts->ascii = 0;
     opts->filter = NULL;
     opts->offline_file = NULL;
     opts->save_file = NULL;
@@ -88,6 +90,8 @@ struct options *parse_options(int argc, char **argv) {
             opts->print_version = 1; 
         } else if (!strcmp(argv[i],"-h")) {
             opts->print_usage = 1;
+        } else if (!strcmp(argv[i],"-A")) {
+            opts->ascii = 1;
         } else if (!strcmp(argv[i],"-i")) {
             if (lastarg) goto invalid;
             if (opts->dev) free(opts->dev);

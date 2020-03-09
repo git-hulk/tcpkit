@@ -37,6 +37,7 @@ struct options {
     int print_version;
     int print_usage;
     int stats_port;
+    int ascii;
     ProtocolType protocol;
 };
 

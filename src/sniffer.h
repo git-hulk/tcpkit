@@ -29,6 +29,7 @@ struct sniffer {
     char *filter;
     int protocol;
     int threshold;
+    int ascii;
 
     struct hashtable *syn_tab;
     struct hashtable *requests;
