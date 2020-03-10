@@ -7,7 +7,6 @@ function process(packet)
             packet.sport, -- source port
             packet.dip, -- destination ip
             packet.dport, -- destination port
-            type, -- request or response packet
             packet.seq, -- sequence number
             packet.ack, -- ack number
             packet.flags, -- flags, e.g. syn|ack|psh..
