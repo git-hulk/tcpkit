@@ -23,7 +23,10 @@
 #include "tcpkit.h"
 #include "server.h"
 
+
 struct server *srv;
+
+const char *VERSION = "1.1.0";
 
 void signal_handler(int sig) {
     if (sig == SIGINT || sig == SIGTERM) {
@@ -34,6 +37,7 @@ void signal_handler(int sig) {
 void usage() {
     const char *usage_literal = ""
         "the tcpkit was designed to make network packets programable with LUA by @git-hulk\n"
+        "   version: %s\n"
         "   -h, Print the tcpkit version strings, print a usage message, and exit\n"
         "   -i interface, Listen on network card interface\n"
         "   -A Print each packet (minus its link level header) in ASCII.  Handy for capturing web pages.\n"
@@ -50,7 +54,7 @@ void usage() {
         "   `tcpkit -i eth0 tcp port 6379 -p redis` was used to monitor the redis reqeust latency\n\n"
         "   `tcpkit -i eth0 tcp port 6379 -p redis -w 6379.pcap` would also dump the packets to `6379.pcap`\n\n"
         "   `tcpkit -i eth0 tcp port 6379 -p redis -t 10` would only print the request latency slower than 10ms\n";
-    color_printf(GREEN, "%s\n", usage_literal);
+    color_printf(GREEN, usage_literal, VERSION);
     exit(0);
 }
 
@@ -177,6 +181,10 @@ int main(int argc, char **argv) {
     if (opts->print_usage) {
         free_options(opts);
         usage();
+    }
+    if (opts->print_version) {
+        printf("tcpkit %s\n", VERSION);
+        exit(0);
     }
     if (getuid() != 0 && !opts->offline_file) {
         free_options(opts);
