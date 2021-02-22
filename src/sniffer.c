@@ -96,9 +96,11 @@ struct sniffer *sniffer_create(struct options *opts, char *err) {
     if (!pcap) goto error; 
     sniffer->pcap = pcap;
 
-    bpf = sniffer_compile(sniffer->pcap, sniffer->filter, err);
-    if (!bpf) goto error;
-    sniffer->bpf = bpf;
+    if (!sniffer->filter) {
+        bpf = sniffer_compile(sniffer->pcap, sniffer->filter, err);
+        if (!bpf) goto error;
+        sniffer->bpf = bpf;
+    }
 
     if (opts->script) {
         lua_state = lua_state_create(opts->script, err);
