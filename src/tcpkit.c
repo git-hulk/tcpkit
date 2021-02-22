@@ -158,7 +158,7 @@ struct options *parse_options(int argc, char **argv) {
             }
         }
     }
-    if (!opts->filter) opts->filter = strdup("tcp");
+    if (!opts->filter) opts->filter = strdup("");
     return opts;
 
 invalid:
