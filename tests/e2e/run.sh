@@ -104,6 +104,13 @@ expect_not_contains "no negative payload length is reported" "$out" "length -"
 expect_not_contains "no payload length beyond the frame is reported" "$out" "length 3960"
 expect_not_contains "no udp length beyond the frame is reported" "$out" "length 59992"
 
+echo "== e2e: untrusted payloads"
+replay malformed-payload.pcap -p redis
+expect_status "payloads with no line terminator exit cleanly" "$status" 0
+expect_lines "each request stays on one line" "$out" 3
+expect_contains "a truncated resp array is summarised" "$out" '*2..$3..GET'
+expect_contains "a payload with no crlf is summarised" "$out" "GETNOCRLFATALL"
+
 echo "== e2e: capture filter"
 replay redis-session.pcap -p raw udp
 expect_lines "a udp filter keeps only the dns packet" "$out" 1
