@@ -90,11 +90,27 @@ expect_contains "-t keeps the slow request" "$out" "SET k v"
 echo "== e2e: raw mode"
 replay redis-session.pcap -p raw
 expect_lines "prints every captured packet" "$out" 8
+expect_contains "prints the real destination for a request" "$out" \
+    "10.0.0.1.51137 > 10.0.0.2.6379"
+expect_contains "prints the real destination for a response" "$out" \
+    "10.0.0.2.6379 > 10.0.0.1.51137"
+expect_not_contains "never prints the source as the destination" "$out" \
+    "10.0.0.1.51137 > 10.0.0.1.51137"
+
+echo "== e2e: piped output"
+# Not a terminal, so no escape codes should reach the pipe.
+TZ=UTC "$TCPKIT" -r fixtures/redis-session.pcap -P "$STATS_PORT" -p redis \
+    > "$tmpdir/raw-out" 2>&1
+if grep -q "$ESC" "$tmpdir/raw-out"; then
+    fail "piped output carries no colour escapes"
+else
+    ok "piped output carries no colour escapes"
+fi
 
 echo "== e2e: udp payload accounting"
 replay redis-session.pcap -p raw
 expect_contains "the udp header is not counted as payload" "$out" \
-    "10.0.0.1.40000 > 10.0.0.1.40000: length 12"
+    "10.0.0.1.40000 > 10.0.0.3.53: length 12"
 
 echo "== e2e: malformed frames"
 replay truncated.pcap -p raw

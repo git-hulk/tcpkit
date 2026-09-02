@@ -23,11 +23,11 @@ lua_State *lua_state_create(const char *file, char *err) {
     }
     lua_getglobal(state, "process");
     if (!lua_isfunction(state, lua_gettop(state))) {
-        lua_pop(state, -1);
+        lua_pop(state, 1);
         snprintf(err, MAX_ERR_BUFF_SIZE, "'process' function was not found");
         return NULL;
     }
-    lua_pop(state, -1);
+    lua_pop(state, 1);
     return state;
 }
 

@@ -14,6 +14,8 @@
  *
  **/
 #include <time.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -158,7 +160,7 @@ static void push_packet_to_lua_state(lua_State *state, struct user_packet *upack
         log_message(FATAL, "%s", lua_tostring(state, -1));
     }
     lua_tonumber(state, -1);
-    lua_pop(state, -1);
+    lua_pop(state, 1);
     lua_need_gc(state);
 
 }
@@ -198,7 +200,6 @@ static void process_response_packet(struct sniffer *sniffer, struct user_packet 
     char key[64], target[32], t_buf[64], sip_buf[64], dip_buf[64];
     struct request *req;
     int64_t delta;
-    char *ip_src, *ip_dst;
     struct query_stats *stats;
 
     snprintf(key, sizeof(key), "%u:%d %u:%d",
@@ -216,11 +217,10 @@ static void process_response_packet(struct sniffer *sniffer, struct user_packet 
             return;
         }
 
-        strftime(t_buf, 64, "%Y-%m-%d %H:%M:%S",localtime(&upacket->tv.tv_sec));
-        ip_src = inet_ntoa(upacket->ip_src);
-        snprintf(sip_buf, sizeof(sip_buf), ip_src, strlen(ip_src));
-        ip_dst = inet_ntoa(upacket->ip_dst);
-        snprintf(dip_buf, sizeof(dip_buf), ip_dst, strlen(ip_dst));
+        strftime(t_buf, sizeof(t_buf), "%Y-%m-%d %H:%M:%S",localtime(&upacket->tv.tv_sec));
+        /* inet_ntoa returns a static buffer, so both ends need their own copy. */
+        snprintf(sip_buf, sizeof(sip_buf), "%s", inet_ntoa(upacket->ip_src));
+        snprintf(dip_buf, sizeof(dip_buf), "%s", inet_ntoa(upacket->ip_dst));
         color_printf(GREEN, "%s.%06d %s:%d => %s:%d | %.3f ms | %s\n",
                     t_buf, upacket->tv.tv_usec,
                     dip_buf, upacket->port_dst,
@@ -230,33 +230,49 @@ static void process_response_packet(struct sniffer *sniffer, struct user_packet 
     }
 }
 
+static void append_fmt(char *buf, int cap, int *n, const char *fmt, ...) {
+    va_list ap;
+    int written;
+
+    if (*n >= cap - 1) return;
+    va_start(ap, fmt);
+    written = vsnprintf(buf + *n, cap - *n, fmt, ap);
+    va_end(ap);
+    if (written < 0) return;
+    /* vsnprintf reports what it would have written, so clamp to the buffer. */
+    *n = *n + written > cap - 1 ? cap - 1 : *n + written;
+}
+
 void print_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
     int n = 0, length;
     char buf[512], t_buf[32];
 
     length = upacket->wire_payload_size;
-    strftime(t_buf, sizeof(t_buf)-n-1, "%H:%M:%S",localtime(&upacket->tv.tv_sec));
-    n += snprintf(buf+n, sizeof(buf)-n-1, "%s",  t_buf);
-    n += snprintf(buf+n, sizeof(buf)-n-1, ".%06d", upacket->tv.tv_usec);
-    n += snprintf(buf+n, sizeof(buf)-n-1, " IP %s.%d", inet_ntoa(upacket->ip_src), upacket->port_src);
-    n += snprintf(buf+n, sizeof(buf)-n-1, " > %s.%d:", inet_ntoa(upacket->ip_src), upacket->port_src);
+    strftime(t_buf, sizeof(t_buf), "%H:%M:%S", localtime(&upacket->tv.tv_sec));
+    append_fmt(buf, sizeof(buf), &n, "%s", t_buf);
+    append_fmt(buf, sizeof(buf), &n, ".%06d", upacket->tv.tv_usec);
+    append_fmt(buf, sizeof(buf), &n, " IP %s.%d",
+            inet_ntoa(upacket->ip_src), upacket->port_src);
+    append_fmt(buf, sizeof(buf), &n, " > %s.%d:",
+            inet_ntoa(upacket->ip_dst), upacket->port_dst);
     if (upacket->is_tcp) {
-        n += snprintf(buf+n, sizeof(buf)-n-1, " Flags [");
-        if (upacket->flags & 0x01) n += snprintf(buf+n, sizeof(buf)-n-1, "F");
-        if (upacket->flags & 0x02) n += snprintf(buf+n, sizeof(buf)-n-1, "S");
-        if (upacket->flags & 0x04) n += snprintf(buf+n, sizeof(buf)-n-1, "R");
-        if (upacket->flags & 0x08) n += snprintf(buf+n, sizeof(buf)-n-1, "P");
-        if (upacket->flags & 0x10) n += snprintf(buf+n, sizeof(buf)-n-1, ".");
-        n += snprintf(buf+n, sizeof(buf)-n-1, "],");
+        append_fmt(buf, sizeof(buf), &n, " Flags [");
+        if (upacket->flags & 0x01) append_fmt(buf, sizeof(buf), &n, "F");
+        if (upacket->flags & 0x02) append_fmt(buf, sizeof(buf), &n, "S");
+        if (upacket->flags & 0x04) append_fmt(buf, sizeof(buf), &n, "R");
+        if (upacket->flags & 0x08) append_fmt(buf, sizeof(buf), &n, "P");
+        if (upacket->flags & 0x10) append_fmt(buf, sizeof(buf), &n, ".");
+        append_fmt(buf, sizeof(buf), &n, "],");
         if (length > 0) {
-            n += snprintf(buf+n, sizeof(buf)-n-1, " seq %u:%u,", upacket->seq, upacket->seq+length);
+            append_fmt(buf, sizeof(buf), &n, " seq %u:%u,",
+                    upacket->seq, upacket->seq + length);
         }
         if (upacket->flags & 0x10) {
-            n += snprintf(buf+n, sizeof(buf)-n-1, " ack %u,", upacket->ack);
+            append_fmt(buf, sizeof(buf), &n, " ack %u,", upacket->ack);
         }
-        n += snprintf(buf+n, sizeof(buf)-n-1, " window %d,", upacket->window);
+        append_fmt(buf, sizeof(buf), &n, " window %d,", upacket->window);
     }
-    n += snprintf(buf+n, sizeof(buf)-n-1, " length %d", length);
+    append_fmt(buf, sizeof(buf), &n, " length %d", length);
     if (!sniffer->ascii) {
         printf("%s\n", buf);
     } else {

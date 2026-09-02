@@ -20,14 +20,14 @@
 #include <arpa/inet.h>
 #include "cJSON.h"
 
-#define LATANCY_BUCKETS 18 
+#define LATENCY_BUCKETS 18
 
 struct query_stats {
     uint64_t request_bytes;
     uint64_t response_bytes;
     uint64_t requests;
     uint64_t responses;
-    uint64_t buckets[LATANCY_BUCKETS]; 
+    uint64_t buckets[LATENCY_BUCKETS];
 
     struct in_addr ip;
     uint16_t port;

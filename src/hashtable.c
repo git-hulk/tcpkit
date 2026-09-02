@@ -132,7 +132,7 @@ void *hashtable_get(hashtable *ht, char *key) {
 
 int hashtable_del(hashtable *ht, char *key) {
     int bucket, key_size = strlen(key);
-    entry *current, *prev;
+    entry *current, *prev = NULL;
 
     bucket = hash_function(key, key_size) % ht->nbucket;
     current = ht->buckets[bucket];
