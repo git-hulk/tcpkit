@@ -19,6 +19,7 @@
 #include "tcpkit.h"
 #include "stats.h"
 #include "hashtable.h"
+#include "dumper.h"
 
 struct sniffer {
     pcap_t *pcap;
@@ -39,6 +40,7 @@ struct sniffer {
     int expire_primed;
     lua_State *lua_state;
     struct bpf_program *bpf;
+    struct dumper *dumper;
 };
 
 static inline void sniffer_stats_lock(struct sniffer *sniffer) {

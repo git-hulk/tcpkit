@@ -151,6 +151,26 @@ expect_lines "a udp filter suppresses the redis latency lines" "$out" 0
 replay redis-session.pcap -p redis "tcp port 6379"
 expect_lines "a matching filter keeps the redis latency lines" "$out" 2
 
+echo "== e2e: writing a capture"
+dump="$tmpdir/dumped.pcap"
+tcpkit_run -r fixtures/redis-session.pcap -P "$STATS_PORT" -p raw -w "$dump"
+expect_status "-w alongside -r exits cleanly" "$status" 0
+if [ -s "$dump" ]; then
+    ok "-w writes a capture"
+else
+    fail "-w writes a capture"
+fi
+
+tcpkit_run -r "$dump" -P "$STATS_PORT" -p raw
+expect_lines "the written capture replays identically" "$out" 8
+expect_contains "the written capture keeps the addresses" "$out" \
+    "10.0.0.1.51137 > 10.0.0.2.6379"
+
+tcpkit_run -r fixtures/redis-session.pcap -P "$STATS_PORT" -p raw \
+    -w "$tmpdir/filtered.pcap" udp
+tcpkit_run -r "$tmpdir/filtered.pcap" -P "$STATS_PORT" -p raw
+expect_lines "only the filtered packets are written" "$out" 1
+
 echo "== e2e: error handling"
 replay does-not-exist.pcap -p redis
 expect_status "a missing capture file exits with an error" "$status" 1
