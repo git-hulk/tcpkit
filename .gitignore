@@ -39,3 +39,6 @@ tags
 cmake-build-debug
 CMakeLists.txt
 tcpkit
+
+# Generated dependency file
+src/dep.mk
