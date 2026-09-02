@@ -16,6 +16,7 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -28,6 +29,11 @@ void print_redirect(FILE *fp) {
     log_fp = fp;
 }
 
+/* Escape codes only help on a terminal; piped output should stay plain. */
+static int use_color(void) {
+    return log_fp == stdout && isatty(fileno(stdout));
+}
+
 void color_printf(const char *color, const char *fmt, ...) {
     va_list ap;
     char buf[4096];
@@ -35,7 +41,7 @@ void color_printf(const char *color, const char *fmt, ...) {
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    if(log_fp != stdout || color == NULL) {
+    if(!use_color() || color == NULL) {
         fprintf(log_fp, "%s",  buf);
         fflush(log_fp);
     } else {
@@ -65,7 +71,7 @@ void log_message(enum LEVEL loglevel, const char *fmt, ...) {
     }
     now = time(NULL);
     strftime(t_buf,64,"%Y-%m-%d %H:%M:%S",localtime(&now));
-    if(log_fp != stdout) {
+    if(!use_color()) {
         fprintf(log_fp, "[%s] [%s] %s\n", t_buf, msg, buf);
         fflush(log_fp);
     } else {

@@ -34,8 +34,14 @@ enum LEVEL {
     FATAL
 };
 
-void color_printf(const char *color, const char *fmt, ...);
+#if defined(__GNUC__)
+#define TK_PRINTF_FMT(a, b) __attribute__((format(printf, a, b)))
+#else
+#define TK_PRINTF_FMT(a, b)
+#endif
+
+void color_printf(const char *color, const char *fmt, ...) TK_PRINTF_FMT(2, 3);
 void print_redirect(FILE *fp);
-void log_message(enum LEVEL loglevel, const char *fmt, ...);
+void log_message(enum LEVEL loglevel, const char *fmt, ...) TK_PRINTF_FMT(2, 3);
 
 #endif
