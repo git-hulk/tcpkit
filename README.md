@@ -1,4 +1,4 @@
-# tcpkit [![Build Status](https://travis-ci.com/git-hulk/tcpkit.svg?branch=master)](https://travis-ci.com/git-hulk/tcpkit)
+# tcpkit [![CI](https://github.com/git-hulk/tcpkit/actions/workflows/ci.yml/badge.svg)](https://github.com/git-hulk/tcpkit/actions/workflows/ci.yml)
 
 The tcpkit was designed to analyze network packets with lua script, can also be used to observe the request latency
 of the service with simple protocol, like `redis`/`memcached`.
@@ -10,6 +10,10 @@ $ git clone https://github.com/git-hulk/tcpkit.git tcpkit
 $ cd tcpkit
 $ sudo make && make install
 ```
+
+The build links against the system libpcap when one is installed, and falls
+back to the vendored copy in `deps/`. Pass `USE_SYSTEM_PCAP=0` to always build
+the vendored one.
 
 ## Usage
 
@@ -98,6 +102,26 @@ Escape character is '^]'.
 			}]
 	}
 }
+```
+
+## Development
+
+Run the test suite:
+
+```shell
+$ make test
+```
+
+`make test` builds the binary, then runs the unit suites in `tests/unit` (under
+AddressSanitizer and UndefinedBehaviorSanitizer) followed by the end-to-end
+checks in `tests/e2e`, which replay the pcap fixtures in `tests/fixtures`
+through the binary and assert on its output.
+
+The fixtures are assembled frame by frame by `tests/fixtures/gen_fixtures.py`,
+so they need neither root nor a live capture. Regenerate them with:
+
+```shell
+$ make fixtures
 ```
 
 ## License

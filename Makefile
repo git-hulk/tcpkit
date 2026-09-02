@@ -1,9 +1,22 @@
 default: all
 
+all:
+	cd src && $(MAKE)
+
+test: all
+	cd tests && $(MAKE) test
+
+fixtures:
+	cd tests && $(MAKE) fixtures
+
+install:
+	cd src && $(MAKE) install
+
+clean:
+	cd src && $(MAKE) clean
+	cd tests && $(MAKE) clean
+
 .DEFAULT:
 	cd src && $(MAKE) $@
 
-install:
-	cd src && $(MAKE) $@
-
-.PHONY: install
+.PHONY: default all test fixtures install clean
