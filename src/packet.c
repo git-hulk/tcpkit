@@ -29,40 +29,34 @@
 #include "stats.h"
 #include "protocol.h"
 
-#ifdef _IP_VHL
-#define IP_HL(ip) (((ip)->ip_vhl) & 0x0f)
-#else
-#define IP_HL(ip) (((ip)->ip_hl) & 0x0f)
-#endif
-
-void process_tcp_packet(struct sniffer *sniffer,
-        const struct timeval tv,
+int process_tcp_packet(const struct timeval tv,
         const struct ip* ip_packet,
+        int caplen,
+        int wirelen,
         struct user_packet *packet) {
 
-    struct tcphdr *tcphdr;
-    unsigned int iplen, iphdr_size, tcphdr_size, framehdr_size;
+    const struct tcphdr *tcphdr;
+    int iphdr_size, tcphdr_size, iplen, captured;
 
     iphdr_size = IP_HL(ip_packet)*4;
-    iplen = htons(ip_packet->ip_len);
-    framehdr_size = packet->size - iplen;
-    packet->payload_size -= framehdr_size;
+    if (iphdr_size < (int)sizeof(struct ip)) return -1;
+    if (caplen < iphdr_size + (int)sizeof(struct tcphdr)) return -1;
 
+    tcphdr = (const struct tcphdr *)((const unsigned char *)ip_packet + iphdr_size);
     packet->tv = tv;
     packet->ip_src = ip_packet->ip_src;
     packet->ip_dst = ip_packet->ip_dst;
-    tcphdr = (struct tcphdr *)((unsigned char *)ip_packet + iphdr_size);
 #if defined(__FAVOR_BSD) || defined(__APPLE__)
-    packet->seq = htonl(tcphdr->th_seq);
-    packet->ack = htonl(tcphdr->th_ack);
+    packet->seq = ntohl(tcphdr->th_seq);
+    packet->ack = ntohl(tcphdr->th_ack);
     packet->flags = tcphdr->th_flags;
     packet->port_src = ntohs(tcphdr->th_sport);
     packet->port_dst = ntohs(tcphdr->th_dport);
     packet->window = ntohs(tcphdr->th_win);
     tcphdr_size = tcphdr->th_off * 4;
 #else
-    packet->seq = htonl(tcphdr->seq);
-    packet->ack = htonl(tcphdr->ack_seq);
+    packet->seq = ntohl(tcphdr->seq);
+    packet->ack = ntohl(tcphdr->ack_seq);
     packet->flags = tcphdr->fin | (tcphdr->syn<<1) | (tcphdr->rst<<2) | (tcphdr->psh<<3);
     if (tcphdr->ack) packet->flags |= 0x10;
     packet->port_src = ntohs(tcphdr->source);
@@ -70,27 +64,37 @@ void process_tcp_packet(struct sniffer *sniffer,
     packet->window = ntohs(tcphdr->window);
     tcphdr_size = tcphdr->doff * 4;
 #endif
-    packet->payload = (char *)tcphdr + tcphdr_size;
-    if (iplen < packet->payload_size) packet->payload_size = iplen;
-    if (packet->payload_size > iphdr_size + tcphdr_size) {
-        packet->payload_size -= (iphdr_size + tcphdr_size);
-    } else {
-        packet->payload_size = 0; 
-    }
-    packet->hdr_size = framehdr_size+iphdr_size+tcphdr_size;
+    if (tcphdr_size < (int)sizeof(struct tcphdr)) return -1;
+    if (caplen < iphdr_size + tcphdr_size) return -1;
+
+    /* ip_len covers the IP header and everything after it, but a malformed or
+     * truncated packet can claim more than was captured. */
+    iplen = ntohs(ip_packet->ip_len);
+    if (iplen < iphdr_size + tcphdr_size || iplen > wirelen) return -1;
+
+    packet->wire_payload_size = iplen - iphdr_size - tcphdr_size;
+    captured = caplen - iphdr_size - tcphdr_size;
+    packet->payload = (const char *)tcphdr + tcphdr_size;
+    packet->payload_size = packet->wire_payload_size < captured
+        ? packet->wire_payload_size : captured;
     packet->is_tcp = 1;
+    return 0;
 }
 
-void process_udp_packet(struct sniffer *sniffer,
-        const struct timeval tv,
+int process_udp_packet(const struct timeval tv,
         const struct ip* ip_packet,
+        int caplen,
+        int wirelen,
         struct user_packet *packet) {
 
-    struct udphdr *udphdr;
-    int iphdr_size, framehdr_size, udp_len, payload_size;
-    
+    const struct udphdr *udphdr;
+    int iphdr_size, udp_len, captured;
+
     iphdr_size = IP_HL(ip_packet)*4;
-    udphdr = (struct udphdr *)((unsigned char *)ip_packet + iphdr_size);
+    if (iphdr_size < (int)sizeof(struct ip)) return -1;
+    if (caplen < iphdr_size + (int)sizeof(struct udphdr)) return -1;
+
+    udphdr = (const struct udphdr *)((const unsigned char *)ip_packet + iphdr_size);
     packet->tv = tv;
     packet->ip_src = ip_packet->ip_src;
     packet->ip_dst = ip_packet->ip_dst;
@@ -103,12 +107,17 @@ void process_udp_packet(struct sniffer *sniffer,
     packet->port_dst = ntohs(udphdr->dest);
     udp_len = ntohs(udphdr->len);
 #endif
-    framehdr_size = packet->size - iphdr_size - udp_len;
-    payload_size = packet->payload_size - (framehdr_size+iphdr_size);
-    packet->payload_size = udp_len > payload_size ? payload_size : udp_len;
-    packet->payload = (char *)udphdr + sizeof(struct udphdr);
+    /* uh_ulen counts the udp header too. */
+    if (udp_len < (int)sizeof(struct udphdr)) return -1;
+    if (iphdr_size + udp_len > wirelen) return -1;
+
+    packet->wire_payload_size = udp_len - (int)sizeof(struct udphdr);
+    captured = caplen - iphdr_size - (int)sizeof(struct udphdr);
+    packet->payload = (const char *)udphdr + sizeof(struct udphdr);
+    packet->payload_size = packet->wire_payload_size < captured
+        ? packet->wire_payload_size : captured;
     packet->is_tcp = 0;
-    packet->hdr_size = framehdr_size+iphdr_size;
+    return 0;
 }
 
 static int packet_direction(struct sniffer *sniffer, struct user_packet *upacket) {
@@ -221,7 +230,7 @@ void print_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
     int n = 0, length;
     char buf[512], t_buf[32];
 
-    length = upacket->size - upacket->hdr_size;
+    length = upacket->wire_payload_size;
     strftime(t_buf, sizeof(t_buf)-n-1, "%H:%M:%S",localtime(&upacket->tv.tv_sec));
     n += snprintf(buf+n, sizeof(buf)-n-1, "%s",  t_buf);
     n += snprintf(buf+n, sizeof(buf)-n-1, ".%06d", upacket->tv.tv_usec);
