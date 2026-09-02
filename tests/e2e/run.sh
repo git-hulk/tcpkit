@@ -127,6 +127,14 @@ expect_lines "each request stays on one line" "$out" 3
 expect_contains "a truncated resp array is summarised" "$out" '*2..$3..GET'
 expect_contains "a payload with no crlf is summarised" "$out" "GETNOCRLFATALL"
 
+echo "== e2e: established connections"
+replay established.pcap -p redis
+expect_status "a capture with no handshake exits cleanly" "$status" 0
+expect_lines "the answered request is reported" "$out" 1
+expect_contains "the server side is identified without a syn" "$out" \
+    "10.0.0.1:51137 => 10.0.0.2:6379"
+expect_contains "the latency is measured" "$out" "1.500 ms"
+
 echo "== e2e: stale requests"
 replay stale-request.pcap -p redis
 expect_status "a stale request exits cleanly" "$status" 0

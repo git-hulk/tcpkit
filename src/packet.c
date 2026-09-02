@@ -326,11 +326,39 @@ void print_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
     }
 }
 
-void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
-    int src;
-    uint8_t syn_mask = 0x02, ack_mask = 0x10;
+/* Records `ip:port` as a server endpoint, which is what the latency and byte
+ * counters are keyed on. */
+static void register_endpoint(struct sniffer *sniffer, struct in_addr ip, uint16_t port) {
     char key[32];
     struct query_stats *stats;
+
+    snprintf(key, sizeof(key), "%u:%d", ip.s_addr, port);
+    sniffer_stats_lock(sniffer);
+    if (!hashtable_get(sniffer->syn_tab, key)) {
+        stats = calloc(1, sizeof(*stats));
+        if (stats) {
+            stats->ip = ip;
+            stats->port = port;
+            hashtable_add(sniffer->syn_tab, key, stats);
+        }
+    }
+    sniffer_stats_unlock(sniffer);
+}
+
+/* With no handshake to learn from, the server side has to be guessed. Service
+ * ports sit below the ephemeral range clients draw from, so the lower port is
+ * the server -- which holds whichever direction happens to be seen first. */
+static void infer_server_endpoint(struct sniffer *sniffer, struct user_packet *upacket) {
+    if (upacket->port_dst <= upacket->port_src) {
+        register_endpoint(sniffer, upacket->ip_dst, upacket->port_dst);
+    } else {
+        register_endpoint(sniffer, upacket->ip_src, upacket->port_src);
+    }
+}
+
+void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
+    int direction;
+    uint8_t syn_mask = 0x02, ack_mask = 0x10;
 
     // push to lua state if script exists 
     if (sniffer->lua_state) {
@@ -343,29 +371,25 @@ void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
     expire_stale_requests(sniffer, upacket->tv);
     if (upacket->payload_size == 0) {
         if ((upacket->flags & syn_mask) != 0) {
-            src = (upacket->flags & ack_mask) != 0; 
-            if (src) {
-                snprintf(key, sizeof(key), "%u:%d", upacket->ip_src.s_addr, upacket->port_src);
+            /* On a SYN the server is the destination, on its SYN+ACK the source. */
+            if ((upacket->flags & ack_mask) != 0) {
+                register_endpoint(sniffer, upacket->ip_src, upacket->port_src);
             } else {
-                snprintf(key, sizeof(key), "%u:%d", upacket->ip_dst.s_addr, upacket->port_dst);
+                register_endpoint(sniffer, upacket->ip_dst, upacket->port_dst);
             }
-            sniffer_stats_lock(sniffer);
-            if (!hashtable_get(sniffer->syn_tab, key)) {
-                stats = calloc(1, sizeof(*stats));
-                if (stats) {
-                    stats->ip = src ? upacket->ip_src : upacket->ip_dst;
-                    stats->port = src ? upacket->port_src : upacket->port_dst;
-                    hashtable_add(sniffer->syn_tab, key, stats);
-                }
-            }
-            sniffer_stats_unlock(sniffer);
         }
-    } else {
-        switch(packet_direction(sniffer, upacket)) {
-            case 0:
-                return process_response_packet(sniffer, upacket);
-            case 1:
-                return process_request_packet(sniffer, upacket);
-        }
+        return;
+    }
+
+    direction = packet_direction(sniffer, upacket);
+    if (direction == -1) {
+        /* The capture started after this connection was established. */
+        infer_server_endpoint(sniffer, upacket);
+        direction = packet_direction(sniffer, upacket);
+    }
+    if (direction == 0) {
+        process_response_packet(sniffer, upacket);
+    } else if (direction == 1) {
+        process_request_packet(sniffer, upacket);
     }
 }

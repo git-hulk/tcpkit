@@ -58,6 +58,12 @@ The output was like below:
 
 Use the option `-t` would only show the request which the request latency was slower than threshold(in units of millisecond).
 
+tcpkit works out which side of a connection is the server from the TCP
+handshake when it captures one. For connections that were already established
+when tcpkit started -- the usual case with pooled clients -- it assumes the
+lower of the two ports is the service, since clients draw from the ephemeral
+range above it. A captured handshake always takes precedence.
+
 
 ## How to Use Lua Script
 

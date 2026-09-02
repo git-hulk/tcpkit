@@ -184,6 +184,17 @@ def malformed_payload():
     ]
 
 
+def established():
+    """No handshake at all, and the first frame is a response, as when tcpkit
+    is pointed at a connection that a pooled client opened long ago."""
+    return [
+        # The request this answers was never captured.
+        full(1.000000, to_client(b"$1\r\nz\r\n", 5001, 1001, PSH | ACK)),
+        full(2.000000, to_server(resp("GET", "a"), 1001, 5008, PSH | ACK)),
+        full(2.001500, to_client(b"$1\r\nb\r\n", 5008, 1021, PSH | ACK)),
+    ]
+
+
 def stale_request():
     """A request whose response arrives long after any latency bucket, followed
     by a healthy exchange, so the sweep can be told apart from a broken path."""
@@ -224,3 +235,4 @@ if __name__ == "__main__":
         write_pcap("truncated.pcap", truncated())
         write_pcap("malformed-payload.pcap", malformed_payload())
         write_pcap("stale-request.pcap", stale_request())
+        write_pcap("established.pcap", established())
