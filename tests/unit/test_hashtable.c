@@ -27,13 +27,17 @@ static void test_get_returns_added_value(void) {
 
 static void test_add_keeps_the_first_value(void) {
     hashtable *ht = hashtable_create(16);
+    char *rejected;
     void *existing;
 
     hashtable_add(ht, "key", dup_value("first"));
-    existing = hashtable_add(ht, "key", dup_value("second"));
+    /* A rejected duplicate is not adopted by the table, so it is still ours. */
+    rejected = dup_value("second");
+    existing = hashtable_add(ht, "key", rejected);
 
     TK_EQ_STR((char *)existing, "first");
     TK_EQ_STR((char *)hashtable_get(ht, "key"), "first");
+    free(rejected);
 
     hashtable_destroy(ht);
 }
