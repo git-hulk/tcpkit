@@ -65,6 +65,23 @@ echo "== e2e: raw mode"
 out=$(run redis-session.pcap -p raw)
 expect_lines "prints every captured packet" "$out" 8
 
+echo "== e2e: capture filter"
+out=$(run redis-session.pcap -p raw udp)
+expect_lines "a udp filter keeps only the dns packet" "$out" 1
+expect_contains "the kept packet is the dns query" "$out" "10.0.0.1.40000"
+
+out=$(run redis-session.pcap -p raw "tcp port 9999")
+expect_lines "a filter matching nothing prints nothing" "$out" 0
+
+out=$(run redis-session.pcap -p raw "tcp port 6379")
+expect_lines "a matching filter keeps the tcp packets" "$out" 7
+
+out=$(run redis-session.pcap -p redis udp)
+expect_lines "a udp filter suppresses the redis latency lines" "$out" 0
+
+out=$(run redis-session.pcap -p redis "tcp port 6379")
+expect_lines "a matching filter keeps the redis latency lines" "$out" 2
+
 if [ "$failures" -ne 0 ]; then
     echo "e2e: $failures failed"
     exit 1

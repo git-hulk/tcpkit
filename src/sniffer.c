@@ -96,7 +96,7 @@ struct sniffer *sniffer_create(struct options *opts, char *err) {
     if (!pcap) goto error; 
     sniffer->pcap = pcap;
 
-    if (!sniffer->filter) {
+    if (sniffer->filter && sniffer->filter[0] != '\0') {
         bpf = sniffer_compile(sniffer->pcap, sniffer->filter, err);
         if (!bpf) goto error;
         sniffer->bpf = bpf;
