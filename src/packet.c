@@ -119,19 +119,23 @@ int process_udp_packet(const struct timeval tv,
 
 static int packet_direction(struct sniffer *sniffer, struct user_packet *upacket) {
     char key[32];
+    int direction = -1;
     struct query_stats *stats;
 
+    sniffer_stats_lock(sniffer);
     snprintf(key, sizeof(key), "%u:%d", upacket->ip_src.s_addr, upacket->port_src);
     if ((stats = hashtable_get(sniffer->syn_tab, key)) != NULL) {
         stats_incr(stats, 0, upacket->size);
-        return 0;
+        direction = 0;
+    } else {
+        snprintf(key, sizeof(key), "%u:%d", upacket->ip_dst.s_addr, upacket->port_dst);
+        if ((stats = hashtable_get(sniffer->syn_tab, key)) != NULL)  {
+            stats_incr(stats, 1, upacket->size);
+            direction = 1;
+        }
     }
-    snprintf(key, sizeof(key), "%u:%d", upacket->ip_dst.s_addr, upacket->port_dst);
-    if ((stats = hashtable_get(sniffer->syn_tab, key)) != NULL)  {
-        stats_incr(stats, 1, upacket->size);
-        return 1;
-    }
-    return -1;
+    sniffer_stats_unlock(sniffer);
+    return direction;
 }
 
 static void push_packet_to_lua_state(lua_State *state, struct user_packet *upacket) {
@@ -204,9 +208,11 @@ static void process_response_packet(struct sniffer *sniffer, struct user_packet 
         delta = (upacket->tv.tv_sec - req->tv.tv_sec) * 1000000
             + (upacket->tv.tv_usec - req->tv.tv_usec);
         snprintf(target, sizeof(target), "%u:%d", upacket->ip_src.s_addr, upacket->port_src);
+        sniffer_stats_lock(sniffer);
         if ((stats = hashtable_get(sniffer->syn_tab, target)) != NULL) {
             stats_observer_latency(stats, delta);
         }
+        sniffer_stats_unlock(sniffer);
         if (sniffer->threshold && delta < sniffer->threshold*1000) {
             hashtable_del(sniffer->requests, key);
             return;
@@ -297,12 +303,16 @@ void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
             } else {
                 snprintf(key, sizeof(key), "%u:%d", upacket->ip_dst.s_addr, upacket->port_dst);
             }
+            sniffer_stats_lock(sniffer);
             if (!hashtable_get(sniffer->syn_tab, key)) {
                 stats = calloc(1, sizeof(*stats));
-                stats->ip = src ? upacket->ip_src : upacket->ip_dst;
-                stats->port = src ? upacket->port_src : upacket->port_dst;
-                hashtable_add(sniffer->syn_tab, key, stats);
+                if (stats) {
+                    stats->ip = src ? upacket->ip_src : upacket->ip_dst;
+                    stats->port = src ? upacket->port_src : upacket->port_dst;
+                    hashtable_add(sniffer->syn_tab, key, stats);
+                }
             }
+            sniffer_stats_unlock(sniffer);
         }
     } else {
         switch(packet_direction(sniffer, upacket)) {

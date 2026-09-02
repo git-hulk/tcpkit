@@ -95,8 +95,8 @@ int server_run(struct server *srv, char *err) {
 }
 
 void server_terminate(struct server *srv) {
-    if (!srv || srv->stopped) return;
-    srv->stopped = 1;
+    if (!srv || TK_LOAD(&srv->stopped)) return;
+    TK_STORE(&srv->stopped, 1);
     sniffer_terminate(srv->sniffer);
     if (srv->dumper) dumper_terminate(srv->dumper);
 }
@@ -195,13 +195,17 @@ static char *server_stats_to_json(struct server *srv) {
     char buf[64], *stats_json_str;
 
     object = cJSON_CreateObject();
+    /* Held across the whole walk: the capture thread may otherwise add an
+     * endpoint or bump a counter half way through. */
+    sniffer_stats_lock(srv->sniffer);
     values = hashtable_values(srv->sniffer->syn_tab, &cnt);
     for (i = 0; i < cnt; i++) {
-        stats = (struct query_stats *)values[i];        
+        stats = (struct query_stats *)values[i];
         if (!stats) continue;
-        snprintf(buf, 64, "%s:%d", inet_ntoa(stats->ip), stats->port);
+        snprintf(buf, sizeof(buf), "%s:%d", inet_ntoa(stats->ip), stats->port);
         cJSON_AddItemToObject(object, buf, create_stats_object(stats));
     }
+    sniffer_stats_unlock(srv->sniffer);
     stats_json_str = cJSON_Print(object);
     cJSON_Delete(object);
     free(values);
@@ -223,7 +227,7 @@ static void *server_stats_loop(void *arg) {
     }
     fds[0].fd = listen_fd;
     fds[0].events = POLLIN;
-    while(!srv->stopped) {
+    while(!TK_LOAD(&srv->stopped)) {
         rc = poll(fds, 1, 100);
         if (rc <= 0) continue;
         new_fd = accept(listen_fd, NULL, NULL);

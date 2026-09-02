@@ -10,7 +10,6 @@ CFLAGS = -g $(OPTIMIZATION) -Wall
 # SANITIZE=address builds the binary and the test suite under ASan/UBSan.
 ifdef SANITIZE
 CFLAGS += -fsanitize=$(SANITIZE) -fno-omit-frame-pointer
-LDFLAGS += -fsanitize=$(SANITIZE)
 endif
 
 LUA_DIR = ../deps/lua/src

@@ -13,6 +13,7 @@
 #define TCPKIT_SNIFFER_H
 
 #include <pcap.h>
+#include <pthread.h>
 #include <lua.h>
 #include "tcpkit.h"
 #include "stats.h"
@@ -26,11 +27,24 @@ struct sniffer {
     int threshold;
     int ascii;
 
+    /* syn_tab and the query_stats it owns are read by the stats thread while
+     * the capture thread updates them, so both sides hold stats_lock.
+     * requests belongs to the capture thread alone and needs no lock. */
+    pthread_mutex_t stats_lock;
+    int lock_ready;
     struct hashtable *syn_tab;
     struct hashtable *requests;
     lua_State *lua_state;
     struct bpf_program *bpf;
 };
+
+static inline void sniffer_stats_lock(struct sniffer *sniffer) {
+    pthread_mutex_lock(&sniffer->stats_lock);
+}
+
+static inline void sniffer_stats_unlock(struct sniffer *sniffer) {
+    pthread_mutex_unlock(&sniffer->stats_lock);
+}
 
 struct request {
     struct timeval tv;

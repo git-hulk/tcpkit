@@ -82,6 +82,11 @@ struct sniffer *sniffer_create(struct options *opts, char *err) {
         snprintf(err, MAX_ERR_BUFF_SIZE, "out of memory");
         goto error;
     }
+    if (pthread_mutex_init(&sniffer->stats_lock, NULL) != 0) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "failed to init the stats lock");
+        goto error;
+    }
+    sniffer->lock_ready = 1;
     sniffer->syn_tab->free = free_stats;
     sniffer->requests->free = free_request;
 
@@ -120,6 +125,7 @@ error:
 
 void sniffer_destroy(struct sniffer *sniffer) {
     if (!sniffer) return;
+    if (sniffer->lock_ready) pthread_mutex_destroy(&sniffer->stats_lock);
     if (sniffer->pcap) pcap_close(sniffer->pcap);
     free(sniffer->dev);
     free(sniffer->filter);
