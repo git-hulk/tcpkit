@@ -5,7 +5,7 @@ all: $(PROG)
 
 CC = gcc
 OPTIMIZATION ?= -O2
-CFLAGS = -g $(OPTIMIZATION) -Wall
+CFLAGS = -g $(OPTIMIZATION) -Wall -Wextra
 
 # SANITIZE=address builds the binary and the test suite under ASan/UBSan.
 ifdef SANITIZE
