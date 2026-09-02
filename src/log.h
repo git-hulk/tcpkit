@@ -34,9 +34,8 @@ enum LEVEL {
     FATAL
 };
 
-void raw_printf(char *fmt, ...); 
-void color_printf(const char *color, char *fmt, ...); 
+void color_printf(const char *color, const char *fmt, ...);
 void print_redirect(FILE *fp);
-void log_message(enum LEVEL loglevel, char *fmt, ...); 
+void log_message(enum LEVEL loglevel, const char *fmt, ...);
 
 #endif

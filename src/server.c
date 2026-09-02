@@ -37,44 +37,39 @@ static int server_spwan_stats_thread(struct server *srv);
 
 struct server *server_create(struct options *opts, char *err) {
     struct server *srv;
-    struct sniffer *sniffer;
     struct dumper *d;
 
-    srv = malloc(sizeof(*srv));
-    srv->opts = opts;
-    srv->dumper = NULL;
-    srv->dumper_tid = 0;
-    srv->stats_tid = 0;
-    srv->stopped = 0;
-    sniffer = sniffer_create(opts, err);
-    if (!sniffer) {
-        free(srv);
+    srv = calloc(1, sizeof(*srv));
+    if (!srv) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "out of memory");
         return NULL;
     }
-    srv->sniffer = sniffer;
+    srv->opts = opts;
+    srv->sniffer = sniffer_create(opts, err);
+    if (!srv->sniffer) goto error;
 
     if (!opts->offline_file && opts->save_file) {
-        if (!(d = dumper_create(opts, err))) {
-            sniffer_destroy(sniffer);
-            return NULL;
-        }
+        if (!(d = dumper_create(opts, err))) goto error;
         srv->dumper = d;
         if (server_spwan_dumper_thread(srv) != 0) {
-            log_message(ERROR, "Create dumper thread encounter err: %s", strerror(errno));
-            sniffer_destroy(sniffer);
-            dumper_destroy(d);
-            return NULL;
+            snprintf(err, MAX_ERR_BUFF_SIZE, "create the dumper thread: %s", strerror(errno));
+            goto error;
         }
     }
     if (opts->protocol != ProtocolRaw) {
         if (server_spwan_stats_thread(srv) != 0) {
-            log_message(ERROR, "Create stats thread encounter err: %s", strerror(errno));
-            sniffer_destroy(sniffer);
-            dumper_destroy(d);
-            return NULL;
+            snprintf(err, MAX_ERR_BUFF_SIZE, "create the stats thread: %s", strerror(errno));
+            goto error;
         }
     }
     return srv;
+
+error:
+    server_terminate(srv);
+    if (srv->dumper_tid) pthread_join(srv->dumper_tid, NULL);
+    if (srv->stats_tid) pthread_join(srv->stats_tid, NULL);
+    server_destroy(srv);
+    return NULL;
 }
 
 int server_run(struct server *srv, char *err) {
@@ -89,26 +84,30 @@ int server_run(struct server *srv, char *err) {
     if (srv->dumper_tid) pthread_join(srv->dumper_tid, NULL);
     if (srv->stats_tid) pthread_join(srv->stats_tid, NULL);
     if (!srv->opts->offline_file) {
-        pcap_stats(srv->sniffer->pcap, &stat);
-        printf("\n======================== interface stats ========================\n");
-        printf("%u packets received by filter\n", stat.ps_recv);
-        printf("%u packets dropped by kernel\n", stat.ps_drop);
-        printf("%u packets dropped by interface\n", stat.ps_ifdrop);
-        printf("======================== interface stats ========================\n");
+        if (pcap_stats(srv->sniffer->pcap, &stat) == 0) {
+            printf("\n======================== interface stats ========================\n");
+            printf("%u packets received by filter\n", stat.ps_recv);
+            printf("%u packets dropped by kernel\n", stat.ps_drop);
+            printf("%u packets dropped by interface\n", stat.ps_ifdrop);
+            printf("======================== interface stats ========================\n");
+        } else {
+            log_message(WARN, "Failed to read the interface stats, err: %s",
+                    pcap_geterr(srv->sniffer->pcap));
+        }
     }
 
     return 0;
 }
 
 void server_terminate(struct server *srv) {
-    if (!srv->stopped) {
-        srv->stopped = 1;
-        sniffer_terminate(srv->sniffer);
-        if (srv->dumper) dumper_terminate(srv->dumper);
-    }
+    if (!srv || srv->stopped) return;
+    srv->stopped = 1;
+    sniffer_terminate(srv->sniffer);
+    if (srv->dumper) dumper_terminate(srv->dumper);
 }
 
 void server_destroy(struct server *srv) {
+    if (!srv) return;
     sniffer_destroy(srv->sniffer);
     if (srv->dumper) dumper_destroy(srv->dumper);
     free(srv);
@@ -155,7 +154,7 @@ static int server_listen(int port) {
 
     listen_fd = socket(PF_INET, SOCK_STREAM, 0);
     if (listen_fd == -1)  {
-        log_message(FATAL, "Failed to setup the stats listener, err: %s", strerror(errno));
+        log_message(ERROR, "Failed to setup the stats listener, err: %s", strerror(errno));
         return -1;
     }
     memset(&sin, 0, sizeof(sin));
@@ -164,14 +163,33 @@ static int server_listen(int port) {
     sin.sin_port = htons(port);
     rc = bind(listen_fd, (struct sockaddr *)&sin, sizeof(sin));
     if (rc < 0) {
-        log_message(FATAL, "Failed to bind stats port(%d), err: %s", port, strerror(errno));
+        log_message(ERROR, "Failed to bind stats port(%d), err: %s", port, strerror(errno));
+        close(listen_fd);
         return -1;
     }
     rc = listen(listen_fd, 511);
     if (rc < 0) {
+        log_message(ERROR, "Failed to listen on stats port(%d), err: %s", port, strerror(errno));
+        close(listen_fd);
         return -1;
     }
     return listen_fd;
+}
+
+static void write_all(int fd, const char *buf, size_t len) {
+    ssize_t n;
+    size_t off = 0;
+
+    while (off < len) {
+        n = write(fd, buf + off, len - off);
+        if (n > 0) {
+            off += (size_t)n;
+        } else if (n < 0 && errno == EINTR) {
+            continue;
+        } else {
+            return;
+        }
+    }
 }
 
 static char *server_stats_to_json(struct server *srv) {
@@ -203,6 +221,11 @@ static void *server_stats_loop(void *arg) {
 
     srv = (struct server*)arg;
     listen_fd = server_listen(srv->opts->stats_port);
+    if (listen_fd == -1) {
+        log_message(WARN, "The latency stats are not served on port %d",
+                srv->opts->stats_port);
+        return NULL;
+    }
     fds[0].fd = listen_fd;
     fds[0].events = POLLIN;
     while(!srv->stopped) {
@@ -211,9 +234,11 @@ static void *server_stats_loop(void *arg) {
         new_fd = accept(listen_fd, NULL, NULL);
         if (new_fd < 0) continue;
         stats_buf = server_stats_to_json(srv);
-        write(new_fd, stats_buf, strlen(stats_buf));
+        if (stats_buf) {
+            write_all(new_fd, stats_buf, strlen(stats_buf));
+            free(stats_buf);
+        }
         close(new_fd);
-        free(stats_buf);
     }
     close(listen_fd);
     return NULL;

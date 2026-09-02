@@ -45,7 +45,11 @@ static void free_request(void *v) {
 struct bpf_program *sniffer_compile(pcap_t *pcap, const char *filter, char *err) {
     struct bpf_program *bpf;
    
-    bpf = malloc(sizeof(*bpf)); 
+    bpf = malloc(sizeof(*bpf));
+    if (!bpf) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "out of memory");
+        return NULL;
+    }
     if (pcap_compile(pcap, bpf, filter, 0, 1) != 0) {
         snprintf(err, MAX_ERR_BUFF_SIZE, "%s", pcap_geterr(pcap));
         free(bpf);
@@ -67,19 +71,24 @@ struct sniffer *sniffer_create(struct options *opts, char *err) {
     lua_State *lua_state = NULL;
     struct bpf_program *bpf;
 
-    sniffer = malloc(sizeof(*sniffer));
+    sniffer = calloc(1, sizeof(*sniffer));
+    if (!sniffer) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "out of memory");
+        return NULL;
+    }
     sniffer->protocol = opts->protocol;
     sniffer->threshold = opts->threshold;
     sniffer->ascii = opts->ascii;
     sniffer->dev = strdup(opts->dev);
     sniffer->filter = strdup(opts->filter);
     sniffer->syn_tab = hashtable_create(16);
-    sniffer->syn_tab->free = free_stats;
     sniffer->requests = hashtable_create(102400);
+    if (!sniffer->dev || !sniffer->filter || !sniffer->syn_tab || !sniffer->requests) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "out of memory");
+        goto error;
+    }
+    sniffer->syn_tab->free = free_stats;
     sniffer->requests->free = free_request;
-    sniffer->bpf = NULL;
-    sniffer->lua_state = NULL;
-    sniffer->pcap = NULL;
 
     if (opts->offline_file) {
         pcap = sniffer_offline(opts->offline_file, err);
@@ -115,7 +124,8 @@ error:
 }
 
 void sniffer_destroy(struct sniffer *sniffer) {
-    pcap_close(sniffer->pcap);
+    if (!sniffer) return;
+    if (sniffer->pcap) pcap_close(sniffer->pcap);
     free(sniffer->dev);
     free(sniffer->filter);
     hashtable_destroy(sniffer->syn_tab);
@@ -130,12 +140,15 @@ void sniffer_destroy(struct sniffer *sniffer) {
 
 pcap_t *sniffer_offline(const char *file, char *err) {
     FILE *fp;
+    pcap_t *pcap;
 
     if (!(fp = fopen(file, "r"))) {
-        strcpy(err, strerror(errno));
+        snprintf(err, MAX_ERR_BUFF_SIZE, "%s: %s", file, strerror(errno));
         return NULL;
     }
-    return pcap_fopen_offline(fp, err);
+    pcap = pcap_fopen_offline(fp, err);
+    if (!pcap) fclose(fp);
+    return pcap;
 }
 
 pcap_t *sniffer_online(const char *dev, int snaplen, int buf_size, char *err) {
@@ -210,5 +223,5 @@ int sniffer_run(struct sniffer *sniffer) {
 }
 
 void sniffer_terminate(struct sniffer *sniffer) {
-    pcap_breakloop(sniffer->pcap);
+    if (sniffer && sniffer->pcap) pcap_breakloop(sniffer->pcap);
 }

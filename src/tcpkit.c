@@ -29,7 +29,7 @@ struct server *srv;
 const char *VERSION = "1.1.0";
 
 void signal_handler(int sig) {
-    if (sig == SIGINT || sig == SIGTERM) {
+    if ((sig == SIGINT || sig == SIGTERM) && srv) {
         server_terminate(srv);
     }
 }
@@ -75,18 +75,24 @@ void init_options(struct options *opts) {
 }
 
 void free_options(struct options *opts) {
-    if (opts->dev) free(opts->dev);
-    if (opts->filter) free(opts->filter);
-    if (opts->offline_file) free(opts->offline_file);
-    if (opts->script) free(opts->script);
+    if (!opts) return;
+    free(opts->dev);
+    free(opts->filter);
+    free(opts->offline_file);
+    free(opts->save_file);
+    free(opts->script);
     free(opts);
 }
 
-struct options *parse_options(int argc, char **argv) {
-    int i, lastarg;
+struct options *parse_options(int argc, char **argv, char *err) {
+    int i = 0, lastarg;
     struct options *opts;
 
     opts = malloc(sizeof(*opts));
+    if (!opts) {
+        snprintf(err, MAX_ERR_BUFF_SIZE, "out of memory");
+        return NULL;
+    }
     init_options(opts);
     for (i = 1; i < argc; i++) {
         lastarg = (i == (argc-1));
@@ -149,46 +155,58 @@ struct options *parse_options(int argc, char **argv) {
                 // add 2 for white space and terminal char 
                 new_size = old_size+strlen(argv[i])+2;
                 tmp = realloc(opts->filter, new_size);
-                if (tmp) {
-                    opts->filter = tmp;
-                    opts->filter[old_size++] = ' ';
-                    memcpy(opts->filter+old_size, argv[i], strlen(argv[i]));
-                    opts->filter[new_size-1] = '\0'; 
-                }
+                if (!tmp) goto oom;
+                opts->filter = tmp;
+                opts->filter[old_size++] = ' ';
+                memcpy(opts->filter+old_size, argv[i], strlen(argv[i]));
+                opts->filter[new_size-1] = '\0';
             }
         }
     }
-    if (!opts->filter) opts->filter = strdup("");
+    if (!opts->filter) {
+        opts->filter = strdup("");
+        if (!opts->filter) goto oom;
+    }
     return opts;
 
 invalid:
-    log_message(FATAL, "Invalid option \"%s\" or option argument missing",argv[i]);
+    snprintf(err, MAX_ERR_BUFF_SIZE,
+            "invalid option \"%s\" or option argument missing", argv[i]);
+    free_options(opts);
+    return NULL;
+
+oom:
+    snprintf(err, MAX_ERR_BUFF_SIZE, "out of memory");
     free_options(opts);
     return NULL;
 }
 
 int main(int argc, char **argv) {
-    char err[MAX_ERR_BUFF_SIZE];
+    char err[MAX_ERR_BUFF_SIZE] = "";
     struct options *opts; 
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
     print_redirect(stdout);
-    opts = parse_options(argc, argv);
-    if (!opts) log_message(FATAL, "Failed to parse options, %s", err);
-
+    opts = parse_options(argc, argv, err);
+    if (!opts) {
+        log_message(ERROR, "Failed to parse the options, %s", err);
+        return 1;
+    }
     if (opts->print_usage) {
         free_options(opts);
         usage();
     }
     if (opts->print_version) {
+        free_options(opts);
         printf("tcpkit %s\n", VERSION);
-        exit(0);
+        return 0;
     }
     if (getuid() != 0 && !opts->offline_file) {
+        log_message(ERROR, "You don't have permission to capture on the network card interface");
         free_options(opts);
-        log_message(FATAL, "You don't have permission to capture on the network card interface");
+        return 1;
     }
     if (opts->snaplen < 64) opts->snaplen = 64;
     if (opts->protocol != ProtocolRaw && opts->snaplen > 256) {
@@ -196,13 +214,15 @@ int main(int argc, char **argv) {
     }
     srv = server_create(opts, err);
     if (!srv) {
+        log_message(ERROR, "Failed to create the sniffer server, %s", err);
         free_options(opts);
-        log_message(FATAL, "Failed to create the sniffer server, %s", err);
+        return 1;
     }
     if (server_run(srv, err) == -1) {
+        log_message(ERROR, "Failed to run the server, %s", err);
         server_destroy(srv);
         free_options(opts);
-        log_message(FATAL, "Failed to run the server, %s", err);
+        return 1;
     }
     server_destroy(srv);
     free_options(opts);
