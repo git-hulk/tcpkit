@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    name: build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libpcap
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      - name: Build
+        run: make
+      - name: Test
+        run: make test
+
+  vendored-deps:
+    name: build against the vendored libpcap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install flex and bison
+        run: sudo apt-get update && sudo apt-get install -y flex bison
+      - name: Build
+        run: make USE_SYSTEM_PCAP=0
+
+  fixtures:
+    name: fixtures are reproducible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate and diff
+        run: |
+          make fixtures
+          git diff --exit-code -- tests/fixtures
+
+  lint:
+    name: cppcheck
+    runs-on: ubuntu-latest
+    # Advisory: cppcheck findings vary by version, so this must not gate a PR.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: Lint
+        run: make lint

@@ -42,3 +42,7 @@ tcpkit
 
 # Generated dependency file
 src/dep.mk
+
+# Test binaries
+tests/test_*
+*.dSYM/
