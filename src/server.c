@@ -20,19 +20,16 @@
 #include "tcpkit.h"
 #include "server.h"
 #include "sniffer.h"
-#include "dumper.h"
 #include "log.h"
 #include "stats.h"
 #include "cJSON.h"
 #include "hashtable.h"
 
-static int server_spwan_dumper_thread(struct server *srv);
 static void *server_stats_loop(void *arg);
 static int server_spwan_stats_thread(struct server *srv);
 
 struct server *server_create(struct options *opts, char *err) {
     struct server *srv;
-    struct dumper *d;
 
     srv = calloc(1, sizeof(*srv));
     if (!srv) {
@@ -43,14 +40,6 @@ struct server *server_create(struct options *opts, char *err) {
     srv->sniffer = sniffer_create(opts, err);
     if (!srv->sniffer) goto error;
 
-    if (!opts->offline_file && opts->save_file) {
-        if (!(d = dumper_create(opts, err))) goto error;
-        srv->dumper = d;
-        if (server_spwan_dumper_thread(srv) != 0) {
-            snprintf(err, MAX_ERR_BUFF_SIZE, "create the dumper thread: %s", strerror(errno));
-            goto error;
-        }
-    }
     if (opts->protocol != ProtocolRaw) {
         if (server_spwan_stats_thread(srv) != 0) {
             snprintf(err, MAX_ERR_BUFF_SIZE, "create the stats thread: %s", strerror(errno));
@@ -61,7 +50,6 @@ struct server *server_create(struct options *opts, char *err) {
 
 error:
     server_terminate(srv);
-    if (srv->dumper_tid) pthread_join(srv->dumper_tid, NULL);
     if (srv->stats_tid) pthread_join(srv->stats_tid, NULL);
     server_destroy(srv);
     return NULL;
@@ -76,7 +64,6 @@ int server_run(struct server *srv, char *err) {
         return -1;
     }
     server_terminate(srv);
-    if (srv->dumper_tid) pthread_join(srv->dumper_tid, NULL);
     if (srv->stats_tid) pthread_join(srv->stats_tid, NULL);
     if (!srv->opts->offline_file) {
         if (pcap_stats(srv->sniffer->pcap, &stat) == 0) {
@@ -98,37 +85,12 @@ void server_terminate(struct server *srv) {
     if (!srv || TK_LOAD(&srv->stopped)) return;
     TK_STORE(&srv->stopped, 1);
     sniffer_terminate(srv->sniffer);
-    if (srv->dumper) dumper_terminate(srv->dumper);
 }
 
 void server_destroy(struct server *srv) {
     if (!srv) return;
     sniffer_destroy(srv->sniffer);
-    if (srv->dumper) dumper_destroy(srv->dumper);
     free(srv);
-}
-
-static void* server_dump_loop(void *arg) {
-    struct dumper *d;
-    char err[MAX_ERR_BUFF_SIZE];
-    
-    d = (struct dumper *) arg;
-    if (dumper_run(d) == -1) {
-        snprintf(err, MAX_ERR_BUFF_SIZE, "%s", pcap_geterr(d->pcap));
-    }
-    return NULL;
-}
-
-static int server_spwan_dumper_thread(struct server *srv) {
-    int ret;
-    pthread_t tid;
-
-    ret = pthread_create(&tid, NULL, server_dump_loop, srv->dumper);
-    if (ret != 0) {
-        return ret;
-    }
-    srv->dumper_tid = tid;
-    return 0; 
 }
 
 static int server_spwan_stats_thread(struct server *srv) {

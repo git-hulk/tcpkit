@@ -16,14 +16,13 @@
 #include "tcpkit.h"
 
 struct dumper {
-    struct bpf_program *bpf;
     pcap_dumper_t *file;
-    pcap_t *pcap;
 };
 
-struct dumper *dumper_create(struct options *opts, char *err); 
-void dumper_terminate(struct dumper *d);
-int dumper_run(struct dumper *d);
+/* Writes to `path` through `pcap`, the handle the packets are captured on. */
+struct dumper *dumper_create(pcap_t *pcap, const char *path, char *err);
+void dumper_write(struct dumper *d, const struct pcap_pkthdr *header,
+        const unsigned char *packet);
 void dumper_destroy(struct dumper *d);
 
 #endif

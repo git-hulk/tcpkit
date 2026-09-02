@@ -27,8 +27,6 @@
 struct server {
     struct options *opts;
     struct sniffer *sniffer;
-    struct dumper* dumper;
-    pthread_t dumper_tid;
     pthread_t stats_tid;
     /* Set by server_terminate, which also runs from the signal handler, and
      * read by the stats thread. */

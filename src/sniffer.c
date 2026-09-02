@@ -111,6 +111,11 @@ struct sniffer *sniffer_create(struct options *opts, char *err) {
         sniffer->bpf = bpf;
     }
 
+    if (opts->save_file) {
+        sniffer->dumper = dumper_create(pcap, opts->save_file, err);
+        if (!sniffer->dumper) goto error;
+    }
+
     if (opts->script) {
         lua_state = lua_state_create(opts->script, err);
         if (!lua_state) goto error;
@@ -136,6 +141,7 @@ void sniffer_destroy(struct sniffer *sniffer) {
         free(sniffer->bpf);
     }
     if (sniffer->lua_state) lua_close(sniffer->lua_state);
+    dumper_destroy(sniffer->dumper);
     free(sniffer);
 }
 
@@ -189,6 +195,9 @@ static void packet_handler(unsigned char *user,
     const struct ip *ip_packet;
     struct user_packet upacket;
     struct sniffer *sniffer = (struct sniffer*) user;
+
+    /* Save the frame exactly as it was captured, before anything is parsed. */
+    if (sniffer->dumper) dumper_write(sniffer->dumper, header, packet);
 
     switch(pcap_datalink((pcap_t*)sniffer->pcap)) {
         case DLT_NULL:
