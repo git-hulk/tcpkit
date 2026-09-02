@@ -26,7 +26,9 @@ unsigned int hash_function(const void *key, int len) {
   const unsigned char *data = (const unsigned char *)key;
 
   while(len >= 4) {
-    uint32_t k = *(uint32_t*)data;
+    uint32_t k;
+
+    memcpy(&k, data, sizeof(k));
 
     k *= m;
     k ^= k >> r;
@@ -90,11 +92,12 @@ void hashtable_destroy(hashtable *ht) {
 }
 
 void *hashtable_add(hashtable *ht, char *key, void *value) {
-    int bucket, key_size;
+    int bucket;
+    size_t key_size;
     entry *current;
 
     key_size = strlen(key);
-    bucket = hash_function(key, strlen(key)) % ht->nbucket;
+    bucket = hash_function(key, (int)key_size) % ht->nbucket;
     current = ht->buckets[bucket];
     while (current) {
        if (key_size == strlen(current->key) && !strncmp(key, current->key, key_size)) {
@@ -117,11 +120,12 @@ void *hashtable_add(hashtable *ht, char *key, void *value) {
 }
 
 void *hashtable_get(hashtable *ht, char *key) {
-    int bucket, key_size;
+    int bucket;
+    size_t key_size;
     entry *current;
 
     key_size = strlen(key);
-    bucket = hash_function(key, key_size) % ht->nbucket;
+    bucket = hash_function(key, (int)key_size) % ht->nbucket;
     current = ht->buckets[bucket];
     while(current) {
         if (strlen(current->key) == key_size && !strncmp(key, current->key, key_size)) {
@@ -133,10 +137,11 @@ void *hashtable_get(hashtable *ht, char *key) {
 }
 
 int hashtable_del(hashtable *ht, char *key) {
-    int bucket, key_size = strlen(key);
+    int bucket;
+    size_t key_size = strlen(key);
     entry *current, *prev = NULL;
 
-    bucket = hash_function(key, key_size) % ht->nbucket;
+    bucket = hash_function(key, (int)key_size) % ht->nbucket;
     current = ht->buckets[bucket];
     while (current) {
         if (key_size == strlen(current->key) && !strncmp(key, current->key, key_size)) {

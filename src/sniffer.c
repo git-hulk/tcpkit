@@ -37,6 +37,24 @@ static void free_request(void *v) {
     free(req);
 }
 
+/* pcap_lookupdev is deprecated and returns a shared buffer; the caller owns
+ * the name this returns. Loopback is a last resort, not a first guess. */
+static char *first_capture_device(char *err) {
+    pcap_if_t *devices, *d;
+    char *name = NULL;
+
+    if (pcap_findalldevs(&devices, err) == -1) return NULL;
+    for (d = devices; d; d = d->next) {
+        if (d->flags & PCAP_IF_LOOPBACK) continue;
+        name = strdup(d->name);
+        break;
+    }
+    if (!name && devices) name = strdup(devices->name);
+    pcap_freealldevs(devices);
+    if (!name) snprintf(err, MAX_ERR_BUFF_SIZE, "no capture device available");
+    return name;
+}
+
 struct bpf_program *sniffer_compile(pcap_t *pcap, const char *filter, char *err) {
     struct bpf_program *bpf;
    
@@ -94,11 +112,13 @@ struct sniffer *sniffer_create(struct options *opts, char *err) {
         pcap = sniffer_offline(opts->offline_file, err);
     } else {
         pcap = sniffer_online(opts->dev, opts->snaplen, opts->buf_size, err);
-        if (!strcmp(opts->dev, "any") && !pcap) {
-            if ((dev = pcap_lookupdev(err)) != NULL) {
+        if (!pcap && !strcmp(opts->dev, "any")) {
+            if ((dev = first_capture_device(err)) != NULL) {
                 pcap = sniffer_online(dev, opts->snaplen, opts->buf_size, err);
                 free(opts->dev);
-                opts->dev = strdup(dev);
+                free(sniffer->dev);
+                opts->dev = dev;
+                sniffer->dev = strdup(dev);
             }
         }
     }
@@ -161,13 +181,8 @@ pcap_t *sniffer_offline(const char *file, char *err) {
 pcap_t *sniffer_online(const char *dev, int snaplen, int buf_size, char *err) {
     int status;
     pcap_t *pcap;
-    bpf_u_int32 net = 0, mask = 0;
-    const char *new_dev = dev;
 
-    if (pcap_lookupnet(dev, &net, &mask, err) == -1) {
-        return NULL;
-    }
-    pcap = pcap_create(new_dev, err);
+    pcap = pcap_create(dev, err);
     if (!pcap) return NULL;
     status = pcap_set_snaplen(pcap, snaplen);
     if (status < 0) goto error;
