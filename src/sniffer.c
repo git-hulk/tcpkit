@@ -184,36 +184,45 @@ static void packet_handler(unsigned char *user,
         const struct pcap_pkthdr *header,
         const unsigned char *packet) {
 
-    const struct ip* ip_packet;
+    int linkhdr_size, caplen, wirelen;
+    const struct ip *ip_packet;
+    struct user_packet upacket;
     struct sniffer *sniffer = (struct sniffer*) user;
 
     switch(pcap_datalink((pcap_t*)sniffer->pcap)) {
         case DLT_NULL:
-            ip_packet = (const struct ip *)(packet + NULL_HDRLEN);
+            linkhdr_size = NULL_HDRLEN;
             break;
-        case DLT_LINUX_SLL: 
-            ip_packet = (const struct ip *)(packet + sizeof(struct sll_header));
+        case DLT_LINUX_SLL:
+            linkhdr_size = sizeof(struct sll_header);
             break;
         case DLT_EN10MB:
-            ip_packet = (const struct ip *)(packet + sizeof(struct ether_header));
+            linkhdr_size = sizeof(struct ether_header);
             break;
         case DLT_RAW:
-            ip_packet = (const struct ip *)packet;
+            linkhdr_size = 0;
             break;
         default:
             // do nothing when the link type was unknown
             return;
     }
 
-    struct user_packet upacket;
+    caplen = (int)header->caplen - linkhdr_size;
+    wirelen = (int)header->len - linkhdr_size;
+    if (caplen < (int)sizeof(struct ip)) return;
+    ip_packet = (const struct ip *)(packet + linkhdr_size);
+    if (IP_V(ip_packet) != 4) return;
+
+    memset(&upacket, 0, sizeof(upacket));
     upacket.size = header->len;
-    upacket.payload_size = (int)header->caplen;
     if (ip_packet->ip_p == IPPROTO_TCP) {
-        process_tcp_packet(sniffer, header->ts, ip_packet, &upacket);
-        process_user_packet(sniffer, &upacket);
+        if (process_tcp_packet(header->ts, ip_packet, caplen, wirelen, &upacket) == 0) {
+            process_user_packet(sniffer, &upacket);
+        }
     } else if (ip_packet->ip_p == IPPROTO_UDP) {
-        process_udp_packet(sniffer, header->ts, ip_packet, &upacket);
-        process_user_packet(sniffer, &upacket);
+        if (process_udp_packet(header->ts, ip_packet, caplen, wirelen, &upacket) == 0) {
+            process_user_packet(sniffer, &upacket);
+        }
     }
     // skip the packet if not TCP or UDP
 }

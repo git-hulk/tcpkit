@@ -17,7 +17,7 @@ ifneq ($(SANITIZE),)
 CFLAGS += -fsanitize=$(SANITIZE) -fno-omit-frame-pointer
 endif
 
-SUITES = test_hashtable test_protocol test_stats
+SUITES = test_hashtable test_protocol test_stats test_packet
 
 unit: $(SUITES)
 	@for t in $(SUITES); do echo "== $$t"; ./$$t || exit 1; done
@@ -36,6 +36,12 @@ test_protocol: unit/test_protocol.c $(SRC_DIR)/protocol.c
 
 test_stats: unit/test_stats.c $(SRC_DIR)/stats.c $(SRC_DIR)/cJSON.c
 	$(CC) $(CFLAGS) -o $@ $^
+
+PACKET_SRCS = $(SRC_DIR)/packet.c $(SRC_DIR)/protocol.c $(SRC_DIR)/hashtable.c \
+	      $(SRC_DIR)/stats.c $(SRC_DIR)/cJSON.c $(SRC_DIR)/log.c $(SRC_DIR)/lua.c
+
+test_packet: unit/test_packet.c $(PACKET_SRCS) $(LUA_DIR)/liblua.a
+	$(CC) $(CFLAGS) -o $@ $^ -lm -ldl
 
 fixtures:
 	cd fixtures && python3 gen_fixtures.py

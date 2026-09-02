@@ -46,6 +46,14 @@ $2" ;;
     esac
 }
 
+expect_not_contains() {
+    case $2 in
+        *"$3"*) fail "$1: did not expect to find \"$3\" in:
+$2" ;;
+        *) ok "$1" ;;
+    esac
+}
+
 expect_lines() {
     got=$(printf '%s' "$2" | grep -c . )
     if [ "$got" -eq "$3" ]; then
@@ -82,6 +90,19 @@ expect_contains "-t keeps the slow request" "$out" "SET k v"
 echo "== e2e: raw mode"
 replay redis-session.pcap -p raw
 expect_lines "prints every captured packet" "$out" 8
+
+echo "== e2e: udp payload accounting"
+replay redis-session.pcap -p raw
+expect_contains "the udp header is not counted as payload" "$out" \
+    "10.0.0.1.40000 > 10.0.0.1.40000: length 12"
+
+echo "== e2e: malformed frames"
+replay truncated.pcap -p raw
+expect_status "a capture of malformed frames exits cleanly" "$status" 0
+expect_lines "only the two well formed frames are reported" "$out" 2
+expect_not_contains "no negative payload length is reported" "$out" "length -"
+expect_not_contains "no payload length beyond the frame is reported" "$out" "length 3960"
+expect_not_contains "no udp length beyond the frame is reported" "$out" "length 59992"
 
 echo "== e2e: capture filter"
 replay redis-session.pcap -p raw udp
