@@ -127,6 +127,13 @@ expect_lines "each request stays on one line" "$out" 3
 expect_contains "a truncated resp array is summarised" "$out" '*2..$3..GET'
 expect_contains "a payload with no crlf is summarised" "$out" "GETNOCRLFATALL"
 
+echo "== e2e: stale requests"
+replay stale-request.pcap -p redis
+expect_status "a stale request exits cleanly" "$status" 0
+expect_lines "only the answered request is reported" "$out" 1
+expect_contains "the healthy exchange is still reported" "$out" "GET fast"
+expect_not_contains "the abandoned request is not held for ever" "$out" "GET slow"
+
 echo "== e2e: capture filter"
 replay redis-session.pcap -p raw udp
 expect_lines "a udp filter keeps only the dns packet" "$out" 1

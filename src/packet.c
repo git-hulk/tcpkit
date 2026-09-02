@@ -117,6 +117,50 @@ int process_udp_packet(const struct timeval tv,
     return 0;
 }
 
+/* A response later than this is past the last latency bucket, so a request
+ * still waiting after it is treated as lost rather than kept for ever. */
+#define REQUEST_TIMEOUT_US 60000000
+/* Capture time between sweeps of the pending table. */
+#define EXPIRE_INTERVAL_US 1000000
+/* Firm ceiling for the case where requests arrive faster than they expire. */
+#define MAX_PENDING_REQUESTS 100000
+
+struct request_expiry {
+    struct timeval now;
+    int64_t timeout_us;
+};
+
+static int64_t tv_delta_us(struct timeval later, struct timeval earlier) {
+    return (int64_t)(later.tv_sec - earlier.tv_sec) * 1000000
+        + (later.tv_usec - earlier.tv_usec);
+}
+
+static int request_expired(void *value, void *arg) {
+    const struct request *req = (const struct request *)value;
+    const struct request_expiry *expiry = (const struct request_expiry *)arg;
+
+    return tv_delta_us(expiry->now, req->tv) > expiry->timeout_us;
+}
+
+int requests_expire(struct hashtable *requests, struct timeval now, int64_t timeout_us) {
+    struct request_expiry expiry;
+
+    expiry.now = now;
+    expiry.timeout_us = timeout_us;
+    return hashtable_sweep(requests, request_expired, &expiry);
+}
+
+static void expire_stale_requests(struct sniffer *sniffer, struct timeval now) {
+    if (!sniffer->expire_primed) {
+        sniffer->expire_primed = 1;
+        sniffer->last_expire = now;
+        return;
+    }
+    if (tv_delta_us(now, sniffer->last_expire) < EXPIRE_INTERVAL_US) return;
+    sniffer->last_expire = now;
+    requests_expire(sniffer->requests, now, REQUEST_TIMEOUT_US);
+}
+
 static int packet_direction(struct sniffer *sniffer, struct user_packet *upacket) {
     char key[32];
     int direction = -1;
@@ -172,6 +216,8 @@ static void process_request_packet(struct sniffer *sniffer, struct user_packet *
             upacket->ip_src.s_addr, upacket->port_src,
             upacket->ip_dst.s_addr, upacket->port_dst);
     if (hashtable_get(sniffer->requests, key)) return;
+    /* Drop the request rather than grow the table without limit. */
+    if (sniffer->requests->size >= MAX_PENDING_REQUESTS) return;
 
     req = malloc(sizeof(*req));
     if (!req) return;
@@ -205,8 +251,7 @@ static void process_response_packet(struct sniffer *sniffer, struct user_packet 
             upacket->ip_dst.s_addr, upacket->port_dst,
             upacket->ip_src.s_addr, upacket->port_src);
     if ((req = hashtable_get(sniffer->requests, key)) != NULL) {
-        delta = (upacket->tv.tv_sec - req->tv.tv_sec) * 1000000
-            + (upacket->tv.tv_usec - req->tv.tv_usec);
+        delta = tv_delta_us(upacket->tv, req->tv);
         snprintf(target, sizeof(target), "%u:%d", upacket->ip_src.s_addr, upacket->port_src);
         sniffer_stats_lock(sniffer);
         if ((stats = hashtable_get(sniffer->syn_tab, target)) != NULL) {
@@ -295,6 +340,7 @@ void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket) {
         print_user_packet(sniffer, upacket);
         return;
     }
+    expire_stale_requests(sniffer, upacket->tv);
     if (upacket->payload_size == 0) {
         if ((upacket->flags & syn_mask) != 0) {
             src = (upacket->flags & ack_mask) != 0; 

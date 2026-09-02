@@ -14,6 +14,7 @@
 
 #include <pcap.h>
 #include <pthread.h>
+#include <sys/time.h>
 #include <lua.h>
 #include "tcpkit.h"
 #include "stats.h"
@@ -34,6 +35,8 @@ struct sniffer {
     int lock_ready;
     struct hashtable *syn_tab;
     struct hashtable *requests;
+    struct timeval last_expire;
+    int expire_primed;
     lua_State *lua_state;
     struct bpf_program *bpf;
 };

@@ -20,6 +20,7 @@ typedef struct entry {
 
 typedef struct hashtable {
     int nbucket;
+    int size;
     entry **buckets;
     void (*free)(void *);
 } hashtable;
@@ -30,4 +31,6 @@ void *hashtable_get(hashtable *ht, char *key);
 void *hashtable_add(hashtable *ht, char *key, void *value);
 int hashtable_del(hashtable *ht, char *key);
 void **hashtable_values(hashtable *ht, int *cnt);
+/* Removes every entry the predicate accepts and returns how many went. */
+int hashtable_sweep(hashtable *ht, int (*expired)(void *value, void *arg), void *arg);
 #endif

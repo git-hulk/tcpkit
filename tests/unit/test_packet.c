@@ -318,6 +318,68 @@ static void test_udp_rejects_a_length_under_its_own_header(void) {
     free(c.bytes);
 }
 
+static void free_test_request(void *value) {
+    struct request *req = (struct request *)value;
+
+    free(req->payload);
+    free(req);
+}
+
+static void add_request(struct hashtable *requests, const char *key, long sec) {
+    struct request *req = malloc(sizeof(*req));
+
+    req->tv.tv_sec = sec;
+    req->tv.tv_usec = 0;
+    req->seq = 1;
+    req->payload = malloc(8);
+    memcpy(req->payload, "GET a", 6);
+    req->size = 5;
+    hashtable_add(requests, (char *)key, req);
+}
+
+static void test_expiry_drops_only_the_stale_requests(void) {
+    struct hashtable *requests = hashtable_create(16);
+    struct timeval now;
+
+    requests->free = free_test_request;
+    add_request(requests, "old", 100);
+    add_request(requests, "borderline", 150);
+    add_request(requests, "fresh", 195);
+
+    now.tv_sec = 200;
+    now.tv_usec = 0;
+
+    /* A 60s timeout: 100 is 100s old, 150 is 50s old, 195 is 5s old. */
+    TK_EQ_INT(requests_expire(requests, now, 60000000), 1);
+    TK_EQ_INT(requests->size, 2);
+    TK_CHECK(hashtable_get(requests, "old") == NULL, "the stale request must go");
+    TK_CHECK(hashtable_get(requests, "borderline") != NULL, "50s is not stale yet");
+    TK_CHECK(hashtable_get(requests, "fresh") != NULL, "5s is not stale");
+
+    /* Later still, and everything but the newest has aged out. */
+    now.tv_sec = 260;
+    TK_EQ_INT(requests_expire(requests, now, 60000000), 2);
+    TK_EQ_INT(requests->size, 0);
+
+    hashtable_destroy(requests);
+}
+
+static void test_expiry_keeps_requests_when_time_goes_backwards(void) {
+    struct hashtable *requests = hashtable_create(16);
+    struct timeval now;
+
+    requests->free = free_test_request;
+    add_request(requests, "later", 300);
+
+    /* Out of order capture timestamps must not evict anything. */
+    now.tv_sec = 200;
+    now.tv_usec = 0;
+    TK_EQ_INT(requests_expire(requests, now, 60000000), 0);
+    TK_EQ_INT(requests->size, 1);
+
+    hashtable_destroy(requests);
+}
+
 int main(void) {
     TK_RUN(test_tcp_parses_a_complete_packet);
     TK_RUN(test_tcp_rejects_a_truncated_header);
@@ -329,5 +391,7 @@ int main(void) {
     TK_RUN(test_udp_rejects_a_truncated_header);
     TK_RUN(test_udp_rejects_a_length_beyond_the_frame);
     TK_RUN(test_udp_rejects_a_length_under_its_own_header);
+    TK_RUN(test_expiry_drops_only_the_stale_requests);
+    TK_RUN(test_expiry_keeps_requests_when_time_goes_backwards);
     return tk_report("packet");
 }
