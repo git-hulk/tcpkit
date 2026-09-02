@@ -4,60 +4,86 @@
 
 const int MAX_BUF_SIZE = 127;
 
-char *format_redis(const char *payload, int size) {
-    int n = 0, copy_size, buf_size, fields = 0;
-    const char *start;
-    char *buf, *pos;
-    
-    if (payload[0] == '*') {
-        buf_size = size > MAX_BUF_SIZE ? MAX_BUF_SIZE : size;
-        buf = malloc(buf_size+1);
-        start = payload;
-        while((pos = strstr(start, "\r\n")) != NULL) {
-            if (fields != 0 && fields % 2 == 0) {
-                copy_size = pos-start < buf_size - n ? pos-start : buf_size-n;
-                memcpy(buf+n, start, copy_size);
-                n += copy_size;
-                if (n >= buf_size) break;
-                buf[n++] = ' ';
-            }
-            if (pos-payload+2 >= size) break;
-            start = pos+2;
-            fields++;
-        }
-        if (n == 0) {
-            memcpy(buf, payload, buf_size);
-            n = buf_size;
-        }
-        buf[n-1] = '\0';
-        return buf;
+/* The payload points into the capture buffer and is not NUL terminated, so
+ * every scan below is bounded by the size the caller reported. */
+
+struct buf {
+    char *data;
+    int len;
+    int cap;    /* excludes the terminating NUL */
+};
+
+static int buf_init(struct buf *b, int size) {
+    b->cap = size > MAX_BUF_SIZE ? MAX_BUF_SIZE : size;
+    if (b->cap < 0) b->cap = 0;
+    b->len = 0;
+    b->data = malloc(b->cap + 1);
+    return b->data != NULL;
+}
+
+/* The result is a single summary line, so bytes that would break it -- a
+ * newline from a truncated request, a NUL from a binary value -- become dots. */
+static void buf_append(struct buf *b, const char *src, int n) {
+    int i, room = b->cap - b->len;
+    unsigned char c;
+
+    if (n > room) n = room;
+    for (i = 0; i < n; i++) {
+        c = (unsigned char)src[i];
+        b->data[b->len++] = (c >= 0x20 && c < 0x7f) ? (char)c : '.';
     }
-    return format_memcached(payload, size);
+}
+
+static const char *find_crlf(const char *start, const char *end) {
+    for (; start + 1 < end; start++) {
+        if (start[0] == '\r' && start[1] == '\n') return start;
+    }
+    return NULL;
+}
+
+char *format_redis(const char *payload, int size) {
+    struct buf b;
+    const char *start, *end, *pos;
+    int fields = 0;
+
+    if (size <= 0) return format_raw(payload, size);
+    if (payload[0] != '*') return format_memcached(payload, size);
+    if (!buf_init(&b, size)) return NULL;
+
+    /* A RESP array alternates a $length line with the argument itself. */
+    start = payload;
+    end = payload + size;
+    while ((pos = find_crlf(start, end)) != NULL) {
+        if (fields != 0 && fields % 2 == 0) {
+            if (b.len > 0) buf_append(&b, " ", 1);
+            buf_append(&b, start, (int)(pos - start));
+            if (b.len >= b.cap) break;
+        }
+        start = pos + 2;
+        fields++;
+    }
+    if (b.len == 0) buf_append(&b, payload, size);
+    b.data[b.len] = '\0';
+    return b.data;
 }
 
 char *format_memcached(const char *payload, int size) {
-    int n = 0, copy_size, buf_size;
-    char *pos, *buf;
-    const char *start;
+    struct buf b;
+    const char *start, *end, *pos;
 
-    buf_size = size > MAX_BUF_SIZE ? MAX_BUF_SIZE : size;
-    buf = malloc(buf_size+1);
+    if (!buf_init(&b, size)) return NULL;
+
     start = payload;
-    while ((pos = strstr(start, "\r\n")) != NULL) {
-        copy_size = pos-start < buf_size-n ? pos-start : buf_size-n;
-        memcpy(buf+n, start, copy_size);
-        n += copy_size;
-        if (n >= buf_size) break;
-        buf[++n] = ' ';
-        if (pos-payload+2 >= size) break;
-        start = pos+2;
+    end = payload + size;
+    while ((pos = find_crlf(start, end)) != NULL) {
+        if (b.len > 0) buf_append(&b, " ", 1);
+        buf_append(&b, start, (int)(pos - start));
+        if (b.len >= b.cap) break;
+        start = pos + 2;
     }
-    if (n == 0) {
-        memcpy(buf, payload, buf_size);
-        n = buf_size;
-    }
-    buf[n-1] = '\0';
-    return buf;
+    if (b.len == 0) buf_append(&b, payload, size);
+    b.data[b.len] = '\0';
+    return b.data;
 }
 
 char *format_http(const char *payload, int size) {
@@ -65,12 +91,10 @@ char *format_http(const char *payload, int size) {
 }
 
 char *format_raw(const char *payload, int size) {
-    char*buf;
-    int buf_size;
-    buf_size = size > MAX_BUF_SIZE ? MAX_BUF_SIZE : size;
+    struct buf b;
 
-    buf = malloc(buf_size+1);
-    memcpy(buf, payload, buf_size);
-    buf[buf_size] = '\0';
-    return buf;
+    if (!buf_init(&b, size)) return NULL;
+    buf_append(&b, payload, size);
+    b.data[b.len] = '\0';
+    return b.data;
 }

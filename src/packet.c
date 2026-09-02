@@ -170,24 +170,28 @@ static void process_request_packet(struct sniffer *sniffer, struct user_packet *
     snprintf(key, sizeof(key), "%u:%d %u:%d",
             upacket->ip_src.s_addr, upacket->port_src,
             upacket->ip_dst.s_addr, upacket->port_dst);
-    if (!hashtable_get(sniffer->requests, key)) {
-        req = malloc(sizeof(*req));
-        req->tv = upacket->tv;
-        req->seq = upacket->seq;
-        req->payload = NULL;
-        switch(sniffer->protocol) {
-            case ProtocolRedis:
-                req->payload = format_redis(upacket->payload, upacket->payload_size); break;
-            case ProtocolMemcached:
-                req->payload = format_memcached(upacket->payload, upacket->payload_size); break;
-            case ProtocolHTTP:
-                req->payload = format_http(upacket->payload, upacket->payload_size); break;
-            default:
-                req->payload = format_raw(upacket->payload, upacket->payload_size); break;
-        }
-        req->size = strlen(req->payload);
-        hashtable_add(sniffer->requests, key, req);
+    if (hashtable_get(sniffer->requests, key)) return;
+
+    req = malloc(sizeof(*req));
+    if (!req) return;
+    req->tv = upacket->tv;
+    req->seq = upacket->seq;
+    switch(sniffer->protocol) {
+        case ProtocolRedis:
+            req->payload = format_redis(upacket->payload, upacket->payload_size); break;
+        case ProtocolMemcached:
+            req->payload = format_memcached(upacket->payload, upacket->payload_size); break;
+        case ProtocolHTTP:
+            req->payload = format_http(upacket->payload, upacket->payload_size); break;
+        default:
+            req->payload = format_raw(upacket->payload, upacket->payload_size); break;
     }
+    if (!req->payload) {
+        free(req);
+        return;
+    }
+    req->size = strlen(req->payload);
+    hashtable_add(sniffer->requests, key, req);
 }
 
 static void process_response_packet(struct sniffer *sniffer, struct user_packet *upacket) {
