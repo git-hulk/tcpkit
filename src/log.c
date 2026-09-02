@@ -28,15 +28,7 @@ void print_redirect(FILE *fp) {
     log_fp = fp;
 }
 
-void raw_printf(char *fmt, ...) {
-    va_list args;
-
-    va_start(args, fmt);
-    color_printf(NULL, fmt, args);
-    va_end(args);
-}
-
-void color_printf(const char *color, char *fmt, ...) {
+void color_printf(const char *color, const char *fmt, ...) {
     va_list ap;
     char buf[4096];
 
@@ -51,12 +43,12 @@ void color_printf(const char *color, char *fmt, ...) {
     }
 }
 
-void log_message(enum LEVEL loglevel, char *fmt, ...) {
+void log_message(enum LEVEL loglevel, const char *fmt, ...) {
     va_list ap;
     time_t now;
     char buf[4096];
     char t_buf[64];
-    char *msg = NULL;
+    const char *msg = NULL;
     const char *color = "";
 
     if(loglevel < log_level) return; 
