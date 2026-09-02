@@ -6,6 +6,9 @@ all:
 test: all
 	cd tests && $(MAKE) test
 
+test-race:
+	cd tests && $(MAKE) test-race
+
 fixtures:
 	cd tests && $(MAKE) fixtures
 
@@ -19,4 +22,4 @@ clean:
 .DEFAULT:
 	cd src && $(MAKE) $@
 
-.PHONY: default all test fixtures install clean
+.PHONY: default all test test-race fixtures install clean

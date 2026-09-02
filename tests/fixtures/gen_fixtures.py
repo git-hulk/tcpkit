@@ -6,6 +6,7 @@ capturable without root. Run from this directory: python3 gen_fixtures.py
 """
 
 import struct
+import sys
 
 PCAP_MAGIC = 0xA1B2C3D4
 DLT_EN10MB = 1
@@ -183,7 +184,27 @@ def malformed_payload():
     ]
 
 
+def stress(connections=4000):
+    """Many short-lived connections, to keep the capture thread busy while the
+    stats endpoint is polled. Not a committed fixture: it is generated on demand
+    by the race check because of its size."""
+    global CLIENT_PORT
+    packets = []
+    ts = 0.0
+    for i in range(connections):
+        CLIENT_PORT = 20000 + (i % 40000)
+        packets.append(full(ts, to_server(b"", 1000, 0, SYN)))
+        packets.append(full(ts + 0.0001, to_client(b"", 5000, 1001, SYN | ACK)))
+        packets.append(full(ts + 0.001, to_server(resp("GET", "a"), 1001, 5001, PSH | ACK)))
+        packets.append(full(ts + 0.002, to_client(b"$1\r\nb\r\n", 5001, 1021, PSH | ACK)))
+        ts += 0.01
+    return packets
+
+
 if __name__ == "__main__":
-    write_pcap("redis-session.pcap", redis_session())
-    write_pcap("truncated.pcap", truncated())
-    write_pcap("malformed-payload.pcap", malformed_payload())
+    if len(sys.argv) > 2 and sys.argv[1] == "--stress":
+        write_pcap(sys.argv[2], stress())
+    else:
+        write_pcap("redis-session.pcap", redis_session())
+        write_pcap("truncated.pcap", truncated())
+        write_pcap("malformed-payload.pcap", malformed_payload())

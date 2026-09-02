@@ -41,7 +41,14 @@ PACKET_SRCS = $(SRC_DIR)/packet.c $(SRC_DIR)/protocol.c $(SRC_DIR)/hashtable.c \
 	      $(SRC_DIR)/stats.c $(SRC_DIR)/cJSON.c $(SRC_DIR)/log.c $(SRC_DIR)/lua.c
 
 test_packet: unit/test_packet.c $(PACKET_SRCS) $(LUA_DIR)/liblua.a
-	$(CC) $(CFLAGS) -o $@ $^ -lm -ldl
+	$(CC) $(CFLAGS) -o $@ $^ -lm -ldl -lpthread
+
+# Opt-in: rebuilds the binary under ThreadSanitizer, so it is kept out of
+# `make test` and clobbers the ordinary build.
+test-race:
+	$(MAKE) -C $(SRC_DIR) clean
+	$(MAKE) -C $(SRC_DIR) SANITIZE=thread
+	python3 e2e/race.py
 
 fixtures:
 	cd fixtures && python3 gen_fixtures.py
@@ -49,4 +56,4 @@ fixtures:
 clean:
 	- rm -rf $(SUITES) *.dSYM
 
-.PHONY: unit e2e fixtures clean
+.PHONY: unit e2e test-race fixtures clean

@@ -18,6 +18,10 @@ jobs:
       - name: Install libpcap
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      # The sanitizers the test suite uses need this on newer Ubuntu kernels.
+      - name: Widen mmap randomisation for the sanitizers
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28 || true
       - name: Build
         run: make
       - name: Test
@@ -32,6 +36,18 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y flex bison
       - name: Build
         run: make USE_SYSTEM_PCAP=0
+
+  race:
+    name: thread sanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libpcap
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      - name: Widen mmap randomisation for the sanitizers
+        run: sudo sysctl -w vm.mmap_rnd_bits=28 || true
+      - name: Replay a busy capture while polling the stats endpoint
+        run: make test-race
 
   fixtures:
     name: fixtures are reproducible

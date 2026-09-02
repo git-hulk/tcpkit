@@ -13,7 +13,16 @@
 #define TCPKIT_SERVER_H
 
 #include <pthread.h>
+#include <signal.h>
 #include "tcpkit.h"
+
+#if defined(__GNUC__)
+#define TK_LOAD(p)      __atomic_load_n((p), __ATOMIC_ACQUIRE)
+#define TK_STORE(p, v)  __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+#else
+#define TK_LOAD(p)      (*(p))
+#define TK_STORE(p, v)  (*(p) = (v))
+#endif
 
 struct server {
     struct options *opts;
@@ -21,7 +30,9 @@ struct server {
     struct dumper* dumper;
     pthread_t dumper_tid;
     pthread_t stats_tid;
-    int stopped;
+    /* Set by server_terminate, which also runs from the signal handler, and
+     * read by the stats thread. */
+    sig_atomic_t stopped;
 };
 
 struct server *server_create(struct options *opts, char *err); 
