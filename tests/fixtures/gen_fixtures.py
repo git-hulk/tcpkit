@@ -184,6 +184,21 @@ def malformed_payload():
     ]
 
 
+def stale_request():
+    """A request whose response arrives long after any latency bucket, followed
+    by a healthy exchange, so the sweep can be told apart from a broken path."""
+    return [
+        full(0.000000, to_server(b"", 1000, 0, SYN)),
+        full(0.000100, to_client(b"", 5000, 1001, SYN | ACK)),
+        # Answered 99 seconds later, well past the request timeout.
+        full(1.000000, to_server(resp("GET", "slow"), 1001, 5001, PSH | ACK)),
+        full(100.000000, to_client(b"$1\r\nb\r\n", 5001, 1024, PSH | ACK)),
+        # A normal exchange afterwards still has to be reported.
+        full(101.000000, to_server(resp("GET", "fast"), 1024, 5008, PSH | ACK)),
+        full(101.000500, to_client(b"$1\r\nc\r\n", 5008, 1047, PSH | ACK)),
+    ]
+
+
 def stress(connections=4000):
     """Many short-lived connections, to keep the capture thread busy while the
     stats endpoint is polled. Not a committed fixture: it is generated on demand
@@ -208,3 +223,4 @@ if __name__ == "__main__":
         write_pcap("redis-session.pcap", redis_session())
         write_pcap("truncated.pcap", truncated())
         write_pcap("malformed-payload.pcap", malformed_payload())
+        write_pcap("stale-request.pcap", stale_request())

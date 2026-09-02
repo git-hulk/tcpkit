@@ -61,6 +61,7 @@ hashtable *hashtable_create(int nbucket) {
    if (!ht) return NULL;
    ht->free = NULL;
    ht->nbucket = nbucket;
+   ht->size = 0;
    ht->buckets = calloc(nbucket, sizeof(entry*));
    if (!ht->buckets) {
       free(ht);
@@ -102,10 +103,16 @@ void *hashtable_add(hashtable *ht, char *key, void *value) {
         current = current->next;
     }
     entry *e = malloc(sizeof(*e));
-    e->value = value;
+    if (!e) return NULL;
     e->key = strdup(key);
+    if (!e->key) {
+        free(e);
+        return NULL;
+    }
+    e->value = value;
     e->next = ht->buckets[bucket];
     ht->buckets[bucket] = e;
+    ht->size++;
     return NULL;
 }
 
@@ -141,12 +148,43 @@ int hashtable_del(hashtable *ht, char *key) {
             free(current->key);
             ht->free ? ht->free(current->value):free(current->value);
             free(current);
+            ht->size--;
             return 1;
         }
         prev = current;
         current = current->next;
     }
     return 0;
+}
+
+int hashtable_sweep(hashtable *ht, int (*expired)(void *value, void *arg), void *arg) {
+    int i, removed = 0;
+    entry *current, *next, *prev;
+
+    if (!ht || !expired) return 0;
+    for (i = 0; i < ht->nbucket; i++) {
+        prev = NULL;
+        current = ht->buckets[i];
+        while (current) {
+            next = current->next;
+            if (expired(current->value, arg)) {
+                if (prev) {
+                    prev->next = next;
+                } else {
+                    ht->buckets[i] = next;
+                }
+                free(current->key);
+                ht->free ? ht->free(current->value) : free(current->value);
+                free(current);
+                ht->size--;
+                removed++;
+            } else {
+                prev = current;
+            }
+            current = next;
+        }
+    }
+    return removed;
 }
 
 void **hashtable_values(hashtable *ht, int *cnt) {

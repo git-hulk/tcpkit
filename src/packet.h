@@ -62,5 +62,8 @@ int process_udp_packet(const struct timeval tv,
         int wirelen,
         struct user_packet *packet);
 
+/* Drops pending requests older than timeout_us and returns how many went. */
+int requests_expire(struct hashtable *requests, struct timeval now, int64_t timeout_us);
+
 void process_user_packet(struct sniffer *sniffer, struct user_packet *upacket); 
 #endif
